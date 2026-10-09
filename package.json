@@ -1,0 +1,11 @@
+{
+  "name": "blockchain-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --dir apps/api-gateway start:dev",
+    "dev:indexer": "pnpm --dir apps/indexer-service start:dev",
+    "dev:portfolio": "pnpm --dir apps/portfolio-service start:dev",
+    "dev:web": "pnpm --dir apps/web dev"
+  }
+}
