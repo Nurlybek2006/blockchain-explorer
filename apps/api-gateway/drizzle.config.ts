@@ -12,7 +12,7 @@ if (!process.env.IDENTITY_DATABASE_URL) {
 export default defineConfig({
   dialect: 'postgresql',
 
-  schema: './src/database/schema/*.ts',
+  schema: './src/database/schema/*.schema.ts',
 
   out: './src/database/migrations',
 

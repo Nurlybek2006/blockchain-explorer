@@ -11,6 +11,15 @@
     "infra:up": "docker compose --env-file .env -f infrastructure/compose.yml up -d",
     "infra:down": "docker compose --env-file .env -f infrastructure/compose.yml down",
     "infra:ps": "docker compose --env-file .env -f infrastructure/compose.yml ps",
-    "infra:logs": "docker compose --env-file .env -f infrastructure/compose.yml logs -f"
+    "infra:logs": "docker compose --env-file .env -f infrastructure/compose.yml logs -f",
+    
+    "db:generate": "pnpm db:generate:api && pnpm db:generate:indexer && pnpm db:generate:portfolio",
+    "db:generate:api": "pnpm --dir apps/api-gateway db:generate",
+    "db:generate:indexer": "pnpm --dir apps/indexer-service db:generate",
+    "db:generate:portfolio": "pnpm --dir apps/portfolio-service db:generate",
+    "db:migrate": "pnpm db:migrate:api && pnpm db:migrate:indexer && pnpm db:migrate:portfolio",
+    "db:migrate:api": "pnpm --dir apps/api-gateway db:migrate",
+    "db:migrate:indexer": "pnpm --dir apps/indexer-service db:migrate",
+    "db:migrate:portfolio": "pnpm --dir apps/portfolio-service db:migrate"
   }
 }
