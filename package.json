@@ -6,6 +6,11 @@
     "dev:api": "pnpm --dir apps/api-gateway start:dev",
     "dev:indexer": "pnpm --dir apps/indexer-service start:dev",
     "dev:portfolio": "pnpm --dir apps/portfolio-service start:dev",
-    "dev:web": "pnpm --dir apps/web dev"
+    "dev:web": "pnpm --dir apps/web dev",
+
+    "infra:up": "docker compose --env-file .env -f infrastructure/compose.yml up -d",
+    "infra:down": "docker compose --env-file .env -f infrastructure/compose.yml down",
+    "infra:ps": "docker compose --env-file .env -f infrastructure/compose.yml ps",
+    "infra:logs": "docker compose --env-file .env -f infrastructure/compose.yml logs -f"
   }
 }
