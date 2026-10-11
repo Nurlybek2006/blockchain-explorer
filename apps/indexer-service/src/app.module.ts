@@ -18,6 +18,12 @@ import {
   HealthModule,
 } from './modules/health/health.module.js';
 
+import {
+  ExplorerModule,
+} from './modules/explorer/explorer.module.js';
+
+
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -32,6 +38,8 @@ import {
     DatabaseModule,
 
     ChainSyncModule,
+
+    ExplorerModule,
 
     HealthModule,
   ],

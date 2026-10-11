@@ -7,6 +7,14 @@ import {
 } from '../rpc/rpc.module.js';
 
 import {
+  TokensModule,
+} from '../tokens/tokens.module.js';
+
+import {
+  AddressesModule,
+} from '../addresses/addresses.module.js';
+
+import {
   IndexerConfigService,
 } from '../../config/indexer-config.service.js';
 
@@ -33,6 +41,10 @@ import {
 @Module({
   imports: [
     RpcModule,
+
+    TokensModule,
+
+    AddressesModule,
   ],
 
   providers: [

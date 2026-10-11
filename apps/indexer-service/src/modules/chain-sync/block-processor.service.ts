@@ -4,11 +4,18 @@ import {
 } from '@nestjs/common';
 
 import {
+  sql,
+} from 'drizzle-orm';
+
+import {
   EthereumRpcClient,
   chunkArray,
   hexToBigInt,
   hexToNumber,
   normalizeAddress,
+  type RpcBlock,
+  type RpcTransaction,
+  type RpcTransactionReceipt,
 } from '@blockchain-explorer/blockchain-client';
 
 import {
@@ -16,11 +23,14 @@ import {
 } from '../../database/database.service.js';
 
 import {
+  addresses as addressesTable,
   blocks,
   checkpoints,
   logs as logsTable,
   receipts as receiptsTable,
   syncState,
+  tokenTransfers as tokenTransfersTable,
+  tokens as tokensTable,
   transactions as transactionsTable,
 } from '../../database/schema/index.js';
 
@@ -28,11 +38,13 @@ import {
   IndexerConfigService,
 } from '../../config/indexer-config.service.js';
 
-import type {
-  RpcBlock,
-  RpcTransaction,
-  RpcTransactionReceipt,
-} from '@blockchain-explorer/blockchain-client';
+import {
+  TokenIndexingService,
+} from '../tokens/token-indexing.service.js';
+
+import {
+  AddressIndexingService,
+} from '../addresses/address-indexing.service.js';
 
 @Injectable()
 export class BlockProcessorService {
@@ -50,18 +62,29 @@ export class BlockProcessorService {
 
     private readonly config:
       IndexerConfigService,
+
+    private readonly tokenIndexer:
+      TokenIndexingService,
+
+    private readonly addressIndexer:
+      AddressIndexingService,
   ) {}
 
   async process(
     chainId: number,
+
     networkName: string,
+
     block:
       RpcBlock<RpcTransaction>,
+
     confirmedHead: bigint,
   ): Promise<void> {
     if (
-      block.number === null ||
-      block.hash === null
+      block.number ===
+        null ||
+      block.hash ===
+        null
     ) {
       throw new Error(
         'Cannot index pending block without number/hash',
@@ -74,7 +97,8 @@ export class BlockProcessorService {
       );
 
     const blockHash =
-      block.hash.toLowerCase();
+      block.hash
+        .toLowerCase();
 
     const transactionHashes =
       block.transactions.map(
@@ -83,13 +107,15 @@ export class BlockProcessorService {
       );
 
     /*
-     * RPC network request-терді
-     * DB transaction басталмай тұрып аламыз.
+     * Network request-терді
+     * PostgreSQL transaction
+     * ашпай тұрып орындаймыз.
      */
     const rpcReceipts =
       await this.rpc
         .getTransactionReceipts(
           transactionHashes,
+
           this.config
             .receiptConcurrency,
         );
@@ -110,6 +136,33 @@ export class BlockProcessorService {
           return receipt;
         },
       );
+
+    /*
+     * ERC-20 event parsing +
+     * token metadata discovery.
+     */
+    const tokenData =
+      await this.tokenIndexer
+        .prepare(
+          receipts,
+          blockNumber,
+        );
+
+    /*
+     * Block ішінде кездескен
+     * address-тер.
+     */
+    const addressRows =
+      this.addressIndexer
+        .prepare(
+          block,
+          receipts,
+          tokenData.transfers,
+          blockNumber,
+        );
+
+    const now =
+      new Date();
 
     const blockRow = {
       number:
@@ -149,7 +202,8 @@ export class BlockProcessorService {
       baseFeePerGas:
         block.baseFeePerGas
           ? hexToBigInt(
-              block.baseFeePerGas,
+              block
+                .baseFeePerGas,
             ).toString()
           : null,
 
@@ -165,7 +219,8 @@ export class BlockProcessorService {
           .length,
 
       transactionsRoot:
-        block.transactionsRoot ??
+        block
+          .transactionsRoot ??
         null,
 
       stateRoot:
@@ -181,7 +236,7 @@ export class BlockProcessorService {
         null,
 
       indexedAt:
-        new Date(),
+        now,
     };
 
     const transactionRows =
@@ -227,9 +282,11 @@ export class BlockProcessorService {
             ).toString(),
 
           gasPrice:
-            transaction.gasPrice
+            transaction
+              .gasPrice
               ? hexToBigInt(
-                  transaction.gasPrice,
+                  transaction
+                    .gasPrice,
                 ).toString()
               : null,
 
@@ -263,7 +320,7 @@ export class BlockProcessorService {
             '0x',
 
           indexedAt:
-            new Date(),
+            now,
         }),
       );
 
@@ -271,12 +328,14 @@ export class BlockProcessorService {
       receipts.map(
         (receipt) => ({
           transactionHash:
-            receipt.transactionHash
+            receipt
+              .transactionHash
               .toLowerCase(),
 
           blockNumber:
             hexToBigInt(
-              receipt.blockNumber,
+              receipt
+                .blockNumber,
             ),
 
           status:
@@ -340,7 +399,8 @@ export class BlockProcessorService {
 
                 blockNumber:
                   hexToBigInt(
-                    log.blockNumber,
+                    log
+                      .blockNumber,
                   ),
 
                 logIndex:
@@ -354,19 +414,23 @@ export class BlockProcessorService {
                   )!,
 
                 topic0:
-                  log.topics[0] ??
+                  log
+                    .topics[0] ??
                   null,
 
                 topic1:
-                  log.topics[1] ??
+                  log
+                    .topics[1] ??
                   null,
 
                 topic2:
-                  log.topics[2] ??
+                  log
+                    .topics[2] ??
                   null,
 
                 topic3:
-                  log.topics[3] ??
+                  log
+                    .topics[3] ??
                   null,
 
                 data:
@@ -379,75 +443,93 @@ export class BlockProcessorService {
           ),
       );
 
-    await this.database.db.transaction(
-      async (tx) => {
-        await tx
-          .insert(blocks)
-          .values(blockRow)
-          .onConflictDoUpdate({
-            target:
-              blocks.number,
+    await this.database.db
+      .transaction(
+        async (tx) => {
+          /*
+           * BLOCK
+           */
+          await tx
+            .insert(blocks)
+            .values(
+              blockRow,
+            )
+            .onConflictDoUpdate({
+              target:
+                blocks.number,
 
-            set: {
-              hash:
-                blockRow.hash,
+              set: {
+                hash:
+                  blockRow.hash,
 
-              parentHash:
-                blockRow.parentHash,
+                parentHash:
+                  blockRow
+                    .parentHash,
 
-              miner:
-                blockRow.miner,
+                miner:
+                  blockRow.miner,
 
-              timestamp:
-                blockRow.timestamp,
+                timestamp:
+                  blockRow
+                    .timestamp,
 
-              gasLimit:
-                blockRow.gasLimit,
+                gasLimit:
+                  blockRow
+                    .gasLimit,
 
-              gasUsed:
-                blockRow.gasUsed,
+                gasUsed:
+                  blockRow
+                    .gasUsed,
 
-              baseFeePerGas:
-                blockRow
-                  .baseFeePerGas,
+                baseFeePerGas:
+                  blockRow
+                    .baseFeePerGas,
 
-              size:
-                blockRow.size,
+                size:
+                  blockRow.size,
 
-              transactionCount:
-                blockRow
-                  .transactionCount,
+                transactionCount:
+                  blockRow
+                    .transactionCount,
 
-              transactionsRoot:
-                blockRow
-                  .transactionsRoot,
+                transactionsRoot:
+                  blockRow
+                    .transactionsRoot,
 
-              stateRoot:
-                blockRow
-                  .stateRoot,
+                stateRoot:
+                  blockRow
+                    .stateRoot,
 
-              receiptsRoot:
-                blockRow
-                  .receiptsRoot,
+                receiptsRoot:
+                  blockRow
+                    .receiptsRoot,
 
-              extraData:
-                blockRow.extraData,
+                extraData:
+                  blockRow
+                    .extraData,
 
-              indexedAt:
-                new Date(),
-            },
-          });
+                indexedAt:
+                  now,
+              },
+            });
 
-        for (
-          const chunk of
-          chunkArray(
-            transactionRows,
-            250,
-          )
-        ) {
-          if (
-            chunk.length > 0
+          /*
+           * TRANSACTIONS
+           */
+          for (
+            const chunk of
+            chunkArray(
+              transactionRows,
+              250,
+            )
           ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
             await tx
               .insert(
                 transactionsTable,
@@ -455,18 +537,24 @@ export class BlockProcessorService {
               .values(chunk)
               .onConflictDoNothing();
           }
-        }
 
-        for (
-          const chunk of
-          chunkArray(
-            receiptRows,
-            250,
-          )
-        ) {
-          if (
-            chunk.length > 0
+          /*
+           * RECEIPTS
+           */
+          for (
+            const chunk of
+            chunkArray(
+              receiptRows,
+              250,
+            )
           ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
             await tx
               .insert(
                 receiptsTable,
@@ -474,18 +562,24 @@ export class BlockProcessorService {
               .values(chunk)
               .onConflictDoNothing();
           }
-        }
 
-        for (
-          const chunk of
-          chunkArray(
-            logRows,
-            250,
-          )
-        ) {
-          if (
-            chunk.length > 0
+          /*
+           * RAW EVENT LOGS
+           */
+          for (
+            const chunk of
+            chunkArray(
+              logRows,
+              250,
+            )
           ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
             await tx
               .insert(
                 logsTable,
@@ -493,37 +587,139 @@ export class BlockProcessorService {
               .values(chunk)
               .onConflictDoNothing();
           }
-        }
 
-        await tx
-          .insert(syncState)
-          .values({
-            chainId,
+          /*
+           * TOKENS
+           */
+          for (
+            const token of
+            tokenData.tokens
+          ) {
+            await tx
+              .insert(
+                tokensTable,
+              )
+              .values(token)
+              .onConflictDoUpdate({
+                target:
+                  tokensTable
+                    .address,
 
-            networkName,
+                set: {
+                  name:
+                    sql`COALESCE(EXCLUDED.name, ${tokensTable.name})`,
 
-            lastScannedBlock:
-              blockNumber
-                .toString(),
+                  symbol:
+                    sql`COALESCE(EXCLUDED.symbol, ${tokensTable.symbol})`,
 
-            lastFinalizedBlock:
-              confirmedHead
-                .toString(),
+                  decimals:
+                    sql`COALESCE(EXCLUDED.decimals, ${tokensTable.decimals})`,
 
-            lastBlockHash:
-              blockHash,
+                  totalSupply:
+                    sql`COALESCE(EXCLUDED.total_supply, ${tokensTable.totalSupply})`,
 
-            status:
-              'running',
+                  firstSeenBlock:
+                    sql`LEAST(
+                      COALESCE(${tokensTable.firstSeenBlock}, EXCLUDED.first_seen_block),
+                      EXCLUDED.first_seen_block
+                    )`,
 
-            updatedAt:
-              new Date(),
-          })
-          .onConflictDoUpdate({
-            target:
-              syncState.chainId,
+                  lastUpdatedBlock:
+                    sql`GREATEST(
+                      COALESCE(${tokensTable.lastUpdatedBlock}, EXCLUDED.last_updated_block),
+                      EXCLUDED.last_updated_block
+                    )`,
 
-            set: {
+                  updatedAt:
+                    now,
+                },
+              });
+          }
+
+          /*
+           * ERC-20 TRANSFERS
+           */
+          for (
+            const chunk of
+            chunkArray(
+              tokenData.transfers,
+              250,
+            )
+          ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
+            await tx
+              .insert(
+                tokenTransfersTable,
+              )
+              .values(chunk)
+              .onConflictDoNothing();
+          }
+
+          /*
+           * ADDRESSES
+           */
+          for (
+            const chunk of
+            chunkArray(
+              addressRows,
+              250,
+            )
+          ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
+            await tx
+              .insert(
+                addressesTable,
+              )
+              .values(chunk)
+              .onConflictDoUpdate({
+                target:
+                  addressesTable
+                    .address,
+
+                set: {
+                  isContract:
+                    sql`${addressesTable.isContract} OR EXCLUDED.is_contract`,
+
+                  firstSeenBlock:
+                    sql`LEAST(
+                      COALESCE(${addressesTable.firstSeenBlock}, EXCLUDED.first_seen_block),
+                      EXCLUDED.first_seen_block
+                    )`,
+
+                  lastSeenBlock:
+                    sql`GREATEST(
+                      COALESCE(${addressesTable.lastSeenBlock}, EXCLUDED.last_seen_block),
+                      EXCLUDED.last_seen_block
+                    )`,
+
+                  updatedAt:
+                    now,
+                },
+              });
+          }
+
+          /*
+           * INDEXER STATE
+           */
+          await tx
+            .insert(
+              syncState,
+            )
+            .values({
+              chainId,
+
               networkName,
 
               lastScannedBlock:
@@ -541,56 +737,93 @@ export class BlockProcessorService {
                 'running',
 
               updatedAt:
-                new Date(),
-            },
-          });
-
-        if (
-          blockNumber %
-            BigInt(
-              this.config
-                .checkpointInterval,
-            ) ===
-          0n
-        ) {
-          await tx
-            .insert(
-              checkpoints,
-            )
-            .values({
-              chainId,
-
-              blockNumber,
-
-              blockHash,
-
-              createdAt:
-                new Date(),
+                now,
             })
             .onConflictDoUpdate({
-              target: [
-                checkpoints
+              target:
+                syncState
                   .chainId,
 
-                checkpoints
-                  .blockNumber,
-              ],
-
               set: {
+                networkName,
+
+                lastScannedBlock:
+                  blockNumber
+                    .toString(),
+
+                lastFinalizedBlock:
+                  confirmedHead
+                    .toString(),
+
+                lastBlockHash:
+                  blockHash,
+
+                status:
+                  'running',
+
+                updatedAt:
+                  now,
+              },
+            });
+
+          /*
+           * CHECKPOINT
+           */
+          if (
+            blockNumber %
+              BigInt(
+                this.config
+                  .checkpointInterval,
+              ) ===
+            0n
+          ) {
+            await tx
+              .insert(
+                checkpoints,
+              )
+              .values({
+                chainId,
+
+                blockNumber,
+
                 blockHash,
 
                 createdAt:
-                  new Date(),
-              },
-            });
-        }
-      },
-    );
+                  now,
+              })
+              .onConflictDoUpdate({
+                target: [
+                  checkpoints
+                    .chainId,
+
+                  checkpoints
+                    .blockNumber,
+                ],
+
+                set: {
+                  blockHash,
+
+                  createdAt:
+                    now,
+                },
+              });
+          }
+        },
+      );
 
     this.logger.log(
-      `Indexed block ${blockNumber} (${block.transactions.length} tx, ${logRows.length} logs)`,
+      [
+        `Indexed block ${blockNumber}`,
+        `${block.transactions.length} tx`,
+        `${logRows.length} logs`,
+        `${tokenData.transfers.length} ERC20 transfers`,
+        `${tokenData.tokens.length} tokens`,
+      ].join(
+        ' | ',
+      ),
     );
   }
 }
 // Block, transaction, receipt және smart-contract log-тарды бір PostgreSQL transaction ішінде сақтайды. Бір бөлігі қате болса, block толық rollback болады.
 // Бұл — indexer-дің негізгі ядросы.
+// Бір block-ты толық өңдейді: transaction, receipt, raw log, ERC-20 transfer, token және address деректерін бір PostgreSQL transaction ішінде сақтайды.
