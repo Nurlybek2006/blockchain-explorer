@@ -2,6 +2,7 @@ export class RpcHttpError extends Error {
   constructor(
     public readonly status: number,
     public readonly responseBody: string,
+    public readonly retryAfterMs?: number,
   ) {
     super(
       `Ethereum RPC HTTP error: ${status}`,
@@ -37,3 +38,4 @@ export class RpcTimeoutError extends Error {
   }
 }
 // Network, HTTP және JSON-RPC қателерін бөлек тануға мүмкіндік береді.
+// 429 response ішіндегі Retry-After уақытын error-мен бірге сақтайды.

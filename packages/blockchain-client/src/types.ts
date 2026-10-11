@@ -195,6 +195,12 @@ export interface EthereumRpcClientOptions {
 
   retryBaseDelayMs?: number;
 
+  maxRetryDelayMs?: number;
+
+  maxConcurrentRequests?: number;
+
+  requestsPerSecond?: number;
+
   userAgent?: string;
 }
 // Ethereum JSON-RPC жауаптарының TypeScript модельдерін береді. Соның арқасында blockchain деректері any болмайды.

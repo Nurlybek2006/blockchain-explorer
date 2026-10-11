@@ -4,6 +4,8 @@ export * from './utils.js';
 
 export * from './errors.js';
 
+export * from './rpc-rate-limiter.js';
+
 export * from './ethereum-rpc.client.js';
 
 export * from './erc20.client.js';

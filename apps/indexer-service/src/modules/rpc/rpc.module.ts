@@ -39,7 +39,7 @@ import {
                 config.get(
                   'RPC_TIMEOUT_MS',
                 ) ??
-                  15_000,
+                15_000,
               ),
 
             maxRetries:
@@ -47,7 +47,7 @@ import {
                 config.get(
                   'RPC_MAX_RETRIES',
                 ) ??
-                  3,
+                6,
               ),
 
             retryBaseDelayMs:
@@ -55,7 +55,31 @@ import {
                 config.get(
                   'RPC_RETRY_BASE_DELAY_MS',
                 ) ??
-                  500,
+                500,
+              ),
+
+            maxRetryDelayMs:
+              Number(
+                config.get(
+                  'RPC_MAX_RETRY_DELAY_MS',
+                ) ??
+                30_000,
+              ),
+
+            maxConcurrentRequests:
+              Number(
+                config.get(
+                  'RPC_MAX_CONCURRENT_REQUESTS',
+                ) ??
+                3,
+              ),
+
+            requestsPerSecond:
+              Number(
+                config.get(
+                  'RPC_REQUESTS_PER_SECOND',
+                ) ??
+                5,
               ),
 
             userAgent:
@@ -88,5 +112,5 @@ import {
     Erc20Client,
   ],
 })
-export class RpcModule {}
+export class RpcModule { }
 // EthereumRpcClient пен Erc20Client-ті NestJS dependency injection жүйесіне қосады.
