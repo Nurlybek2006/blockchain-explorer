@@ -1,0 +1,28 @@
+{
+  "name": "@blockchain-explorer/messaging",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@blockchain-explorer/contracts": "workspace:*",
+    "amqplib": "^0.10.0",
+    "bullmq": "^5.0.0",
+    "redis": "^5.0.0"
+  }
+}
