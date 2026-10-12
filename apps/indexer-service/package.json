@@ -26,6 +26,8 @@
   },
   "dependencies": {
     "@blockchain-explorer/blockchain-client": "workspace:*",
+    "@blockchain-explorer/contracts": "workspace:*",
+    "@blockchain-explorer/messaging": "workspace:*",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
