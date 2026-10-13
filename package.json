@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "verify:phase7": "node scripts/verify-phase-7.mjs",
     "build:blockchain-client": "pnpm --dir packages/blockchain-client build",
     "dev:api": "pnpm build:packages && pnpm --dir apps/api-gateway start:dev",
 

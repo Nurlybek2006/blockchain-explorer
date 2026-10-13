@@ -5,3 +5,5 @@ export * from './bullmq/bullmq.factory.js';
 export type { Job, Queue, Worker } from 'bullmq';
 
 export * from './redis/redis-cache.client.js';
+
+export * from './health/check-dependency.js';

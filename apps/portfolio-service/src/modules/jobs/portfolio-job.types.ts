@@ -1,4 +1,5 @@
 export const PORTFOLIO_JOB_NAMES = {
+  SYNC_PORTFOLIO: 'sync-portfolio',
   SYNC_TOKEN_HOLDING:
     'sync-token-holding',
 
@@ -29,6 +30,12 @@ export interface RebuildPortfolioJob {
   sourceEventId: string;
 }
 
+export interface InitialPortfolioSyncJob {
+  portfolioId: string;
+  chainId: number;
+}
+
 export type PortfolioJobData =
   | SyncTokenHoldingJob
-  | RebuildPortfolioJob;
+  | RebuildPortfolioJob
+  | InitialPortfolioSyncJob;

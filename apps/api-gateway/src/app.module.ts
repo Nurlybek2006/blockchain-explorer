@@ -22,6 +22,9 @@ import {
   CacheModule,
 } from './modules/cache/cache.module.js';
 
+import { AuthModule } from './modules/auth/auth.module.js';
+import { PortfolioModule } from './modules/portfolio/portfolio.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,6 +39,10 @@ import {
     DatabaseModule,
 
     CacheModule,
+
+    AuthModule,
+
+    PortfolioModule,
 
     ExplorerModule,
 

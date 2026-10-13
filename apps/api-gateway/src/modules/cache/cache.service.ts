@@ -11,6 +11,7 @@ import {
 
 import {
   RedisCacheClient,
+  checkDependency,
 } from '@blockchain-explorer/messaging';
 
 @Injectable()
@@ -53,8 +54,9 @@ export class CacheService
   async onModuleInit():
     Promise<void> {
     try {
-      await this.cache
-        .connect();
+      if (!await checkDependency(() => this.cache.connect(), 5_000)) {
+        throw new Error('Redis cache connection timed out');
+      }
 
       this.ready =
         true;
@@ -131,6 +133,11 @@ export class CacheService
     }
 
     return value;
+  }
+
+  async ping(): Promise<void> {
+    await this.cache.ping();
+    this.ready = true;
   }
 
   async onModuleDestroy():

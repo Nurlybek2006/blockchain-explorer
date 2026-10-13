@@ -31,6 +31,9 @@ export class RedisCacheClient {
         url:
           options.url,
       });
+
+    // Requests surface connection failures to the service's cache fallback.
+    this.client.on('error', () => undefined);
   }
 
   async connect():
@@ -117,6 +120,10 @@ export class RedisCacheClient {
     if (
       this.client.isOpen
     ) {
+      if (!this.client.isReady) {
+        this.client.destroy();
+        return;
+      }
       await this.client
         .quit();
     }

@@ -1,7 +1,7 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
 
@@ -19,7 +19,7 @@ import * as schema from './schema/index.js';
 
 @Injectable()
 export class DatabaseService
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, OnApplicationShutdown
 {
   private readonly logger =
     new Logger(DatabaseService.name);
@@ -95,7 +95,7 @@ export class DatabaseService
     );
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.pool.end();
 
     this.logger.log(

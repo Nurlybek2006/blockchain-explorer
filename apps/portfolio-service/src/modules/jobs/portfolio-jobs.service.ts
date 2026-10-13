@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   OnModuleDestroy,
 } from '@nestjs/common';
 
@@ -14,6 +15,7 @@ import {
 
 import {
   PORTFOLIO_JOB_NAMES,
+  type InitialPortfolioSyncJob,
   type PortfolioJobData,
   type PortfolioJobName,
   type RebuildPortfolioJob,
@@ -24,6 +26,7 @@ import {
 export class PortfolioJobsService
   implements OnModuleDestroy
 {
+  private readonly logger = new Logger(PortfolioJobsService.name);
   readonly queue:
     Queue<
       PortfolioJobData,
@@ -59,6 +62,9 @@ export class PortfolioJobsService
         >(
           queueName,
         );
+    this.queue.on('error', (error) => {
+      this.logger.error('Portfolio BullMQ queue error', error.stack);
+    });
   }
 
   async enqueueTokenSync(
@@ -73,7 +79,7 @@ export class PortfolioJobsService
 
       {
         jobId:
-          `${job.sourceEventId}:${job.portfolioId}`,
+          `sync-${job.sourceEventId}-${job.portfolioId}`,
       },
     );
   }
@@ -90,9 +96,33 @@ export class PortfolioJobsService
 
       {
         jobId:
-          `reorg:${job.sourceEventId}:${job.portfolioId}`,
+          `reorg-${job.sourceEventId}-${job.portfolioId}`,
       },
     );
+  }
+
+  async enqueueInitialSync(job: InitialPortfolioSyncJob): Promise<void> {
+    await this.enqueueWithDeadline(this.queue.add(PORTFOLIO_JOB_NAMES.SYNC_PORTFOLIO, job, {
+      jobId: `initial-${job.portfolioId}`,
+    }));
+  }
+
+  private async enqueueWithDeadline(operation: Promise<unknown>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Portfolio queue enqueue timed out')), 5_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async ping(): Promise<void> {
+    await this.queue.getJobCounts('waiting');
   }
 
   async onModuleDestroy():

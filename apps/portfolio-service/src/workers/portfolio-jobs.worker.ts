@@ -2,7 +2,7 @@ import {
     Injectable,
     Logger,
     OnApplicationBootstrap,
-    OnApplicationShutdown,
+    OnModuleDestroy,
 } from '@nestjs/common';
 
 import {
@@ -10,11 +10,16 @@ import {
 } from '@nestjs/config';
 
 import {
+    and,
     eq,
+    isNull,
+    lte,
+    or,
 } from 'drizzle-orm';
 
 import {
     Erc20Client,
+    EthereumRpcClient,
 } from '@blockchain-explorer/blockchain-client';
 
 import {
@@ -35,6 +40,7 @@ import {
 import {
     PORTFOLIO_JOB_NAMES,
     type PortfolioJobData,
+    type InitialPortfolioSyncJob,
     type PortfolioJobName,
     type RebuildPortfolioJob,
     type SyncTokenHoldingJob,
@@ -44,7 +50,7 @@ import {
 export class PortfolioJobsWorker
     implements
     OnApplicationBootstrap,
-    OnApplicationShutdown {
+    OnModuleDestroy {
     private readonly logger =
         new Logger(
             PortfolioJobsWorker.name,
@@ -58,6 +64,8 @@ export class PortfolioJobsWorker
 
     private readonly concurrency:
         number;
+
+    private readonly chainId: number;
 
     private worker:
         Worker<
@@ -74,9 +82,12 @@ export class PortfolioJobsWorker
         private readonly erc20:
             Erc20Client,
 
+        private readonly rpc: EthereumRpcClient,
+
         config:
             ConfigService,
     ) {
+        this.chainId = Number(config.get('ETHEREUM_CHAIN_ID') ?? 11155111);
         this.factory =
             new BullMqFactory({
                 redisUrl:
@@ -135,6 +146,10 @@ export class PortfolioJobsWorker
             },
         );
 
+        worker.on('error', (error) => {
+            this.logger.error('Portfolio BullMQ worker error', error.stack);
+        });
+
         worker.on(
             'failed',
             (
@@ -153,7 +168,7 @@ export class PortfolioJobsWorker
         );
     }
 
-    async onApplicationShutdown():
+    async onModuleDestroy():
         Promise<void> {
         const worker =
             this.worker;
@@ -182,6 +197,14 @@ export class PortfolioJobsWorker
         switch (
         job.name
         ) {
+            case PORTFOLIO_JOB_NAMES.SYNC_PORTFOLIO:
+                if (!('chainId' in data) || typeof data.chainId !== 'number' ||
+                    !Number.isSafeInteger(data.chainId) || data.chainId < 1 ||
+                    'walletAddress' in data || 'sourceEventId' in data) {
+                    throw new Error('Invalid sync-portfolio job data');
+                }
+                await this.rebuildPortfolio(data);
+                return;
             case PORTFOLIO_JOB_NAMES
                 .SYNC_TOKEN_HOLDING:
                 if (
@@ -207,9 +230,14 @@ export class PortfolioJobsWorker
 
             case PORTFOLIO_JOB_NAMES
                 .REBUILD_PORTFOLIO:
+                if (!('sourceEventId' in data) || typeof data.sourceEventId !== 'string' ||
+                    'walletAddress' in data || 'chainId' in data) {
+                    throw new Error('Invalid rebuild-portfolio job data');
+                }
                 await this
                     .rebuildPortfolio(
                         data,
+                        true,
                     );
                 return;
 
@@ -224,6 +252,15 @@ export class PortfolioJobsWorker
         job:
             SyncTokenHoldingJob,
     ): Promise<void> {
+        const [portfolio] = await this.database.db.select()
+            .from(portfolios)
+            .where(and(eq(portfolios.id, job.portfolioId), isNull(portfolios.archivedAt)))
+            .limit(1);
+        if (!portfolio) return;
+        if (portfolio.chainId !== this.chainId ||
+            portfolio.walletAddress !== job.walletAddress.toLowerCase()) {
+            throw new Error('Portfolio token job does not match its wallet or configured chain');
+        }
         const blockNumber =
             BigInt(
                 job.blockNumber,
@@ -329,6 +366,7 @@ export class PortfolioJobsWorker
                     new Date(),
             })
             .onConflictDoUpdate({
+                setWhere: or(isNull(holdings.lastUpdatedBlock), lte(holdings.lastUpdatedBlock, blockNumber)),
                 target: [
                     holdings
                         .portfolioId,
@@ -360,7 +398,8 @@ export class PortfolioJobsWorker
 
     private async rebuildPortfolio(
         job:
-            RebuildPortfolioJob,
+            RebuildPortfolioJob | InitialPortfolioSyncJob,
+        allowRollback = false,
     ): Promise<void> {
         const [portfolio] =
             await this.database.db
@@ -369,16 +408,47 @@ export class PortfolioJobsWorker
                     portfolios,
                 )
                 .where(
-                    eq(
+                    and(eq(
                         portfolios.id,
                         job.portfolioId,
-                    ),
+                    ), isNull(portfolios.archivedAt)),
                 )
                 .limit(1);
 
         if (!portfolio) {
             return;
         }
+
+        if (portfolio.chainId !== this.chainId ||
+            ('chainId' in job && job.chainId !== portfolio.chainId)) {
+            throw new Error('Portfolio sync job does not match the configured chain');
+        }
+        const rpcChainId = await this.rpc.getChainId();
+        if (rpcChainId !== portfolio.chainId) {
+            throw new Error('Ethereum RPC endpoint chain does not match portfolio chain');
+        }
+        const blockNumber = await this.rpc.getBlockNumber();
+        const nativeBalance = await this.rpc.getBalance(portfolio.walletAddress, blockNumber);
+        await this.database.db.insert(holdings).values({
+            portfolioId: portfolio.id,
+            assetKey: 'native:eth',
+            assetType: 'native',
+            tokenAddress: null,
+            symbol: 'ETH',
+            name: 'Ether',
+            decimals: 18,
+            balanceRaw: nativeBalance.toString(),
+            lastUpdatedBlock: blockNumber,
+            updatedAt: new Date(),
+        }).onConflictDoUpdate({
+            setWhere: allowRollback ? undefined : or(isNull(holdings.lastUpdatedBlock), lte(holdings.lastUpdatedBlock, blockNumber)),
+            target: [holdings.portfolioId, holdings.assetKey],
+            set: {
+                balanceRaw: nativeBalance.toString(),
+                lastUpdatedBlock: blockNumber,
+                updatedAt: new Date(),
+            },
+        });
 
         const portfolioHoldings =
             await this.database.db
@@ -416,7 +486,7 @@ export class PortfolioJobsWorker
                         portfolio
                             .walletAddress,
 
-                        'latest',
+                        blockNumber,
                     );
 
             await this.database.db
@@ -424,6 +494,7 @@ export class PortfolioJobsWorker
                     holdings,
                 )
                 .set({
+                    lastUpdatedBlock: blockNumber,
                     balanceRaw:
                         balance
                             .toString(),
@@ -432,10 +503,10 @@ export class PortfolioJobsWorker
                         new Date(),
                 })
                 .where(
-                    eq(
+                    and(eq(
                         holdings.id,
                         holding.id,
-                    ),
+                    ), allowRollback ? undefined : or(isNull(holdings.lastUpdatedBlock), lte(holdings.lastUpdatedBlock, blockNumber))),
                 );
         }
     }

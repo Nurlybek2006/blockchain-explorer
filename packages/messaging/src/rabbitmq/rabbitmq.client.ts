@@ -102,6 +102,12 @@ export class RabbitMqClient {
       await this.connection
         .createConfirmChannel();
 
+    const connectedChannel = this.channel;
+    connectedChannel.on('close', () => {
+      if (this.channel === connectedChannel) this.channel = null;
+    });
+    connectedChannel.on('error', () => undefined);
+
     await this.channel
       .assertExchange(
         this.exchange,
@@ -331,6 +337,10 @@ export class RabbitMqClient {
       null;
   }
 
+  get isConnected(): boolean {
+    return this.connection !== null && this.channel !== null;
+  }
+
   private requireChannel():
     ConfirmChannel {
     if (!this.channel) {
@@ -343,4 +353,4 @@ export class RabbitMqClient {
   }
 }
 
-// RabbitMQ exchange, queue, routing және DLQ механизмін басқарады. Publish кезінде publisher confirm қолданады, consumer тек сәтті өңделген message-ті ack етеді. 
+// RabbitMQ exchange, queue, routing және DLQ механизмін басқарады. Publish кезінде publisher confirm қолданады, consumer тек сәтті өңделген message-ті ack етеді.

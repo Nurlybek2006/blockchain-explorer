@@ -18,5 +18,7 @@ import {
   providers: [
     PortfolioEventsConsumer,
   ],
+
+  exports: [PortfolioEventsConsumer],
 })
 export class MessagingModule {}

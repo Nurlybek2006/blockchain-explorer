@@ -14,9 +14,7 @@ import {
   HealthModule,
 } from './modules/health/health.module.js';
 
-import {
-  JobsModule,
-} from './modules/jobs/jobs.module.js';
+import { PortfoliosModule } from './modules/portfolios/portfolios.module.js';
 
 import {
   MessagingModule,
@@ -36,6 +34,8 @@ import {
     DatabaseModule,
 
     MessagingModule,
+
+    PortfoliosModule,
 
     HealthModule,
   ],

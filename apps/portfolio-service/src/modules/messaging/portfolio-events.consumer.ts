@@ -12,12 +12,14 @@ import {
 import {
   and,
   eq,
+  isNull,
   or,
 } from 'drizzle-orm';
 
 import {
   EVENT_TYPES,
-  type BlockchainEvent,
+  isTokenTransferIndexedEvent,
+  isChainReorganizedEvent,
   type EventEnvelope,
   type TokenTransferIndexedEvent,
   type ChainReorganizedEvent,
@@ -121,6 +123,10 @@ export class PortfolioEventsConsumer
     );
   }
 
+  get isConnected(): boolean {
+    return this.rabbit.isConnected;
+  }
+
   async onModuleDestroy():
     Promise<void> {
     await this.rabbit
@@ -163,17 +169,21 @@ export class PortfolioEventsConsumer
     ) {
       case EVENT_TYPES
         .TOKEN_TRANSFER_INDEXED:
+        if (!isTokenTransferIndexedEvent(event)) {
+          throw new Error('Invalid token transfer event');
+        }
         await this.handleTransfer(
-          event as
-            TokenTransferIndexedEvent,
+          event,
         );
         break;
 
       case EVENT_TYPES
         .CHAIN_REORGANIZED:
+        if (!isChainReorganizedEvent(event)) {
+          throw new Error('Invalid chain reorganization event');
+        }
         await this.handleReorg(
-          event as
-            ChainReorganizedEvent,
+          event,
         );
         break;
 
@@ -221,6 +231,7 @@ export class PortfolioEventsConsumer
         )
         .where(
           and(
+            isNull(portfolios.archivedAt),
             eq(
               portfolios
                 .chainId,
@@ -234,7 +245,7 @@ export class PortfolioEventsConsumer
                   .walletAddress,
 
                 payload
-                  .fromAddress,
+                  .fromAddress.toLowerCase(),
               ),
 
               eq(
@@ -242,7 +253,7 @@ export class PortfolioEventsConsumer
                   .walletAddress,
 
                 payload
-                  .toAddress,
+                  .toAddress.toLowerCase(),
               ),
             ),
           ),
@@ -263,7 +274,7 @@ export class PortfolioEventsConsumer
 
           tokenAddress:
             payload
-              .tokenAddress,
+              .tokenAddress.toLowerCase(),
 
           blockNumber:
             payload
@@ -289,13 +300,13 @@ export class PortfolioEventsConsumer
           portfolios,
         )
         .where(
-          eq(
+          and(isNull(portfolios.archivedAt), eq(
             portfolios
               .chainId,
 
             event.payload
               .chainId,
-          ),
+          )),
         );
 
     for (
