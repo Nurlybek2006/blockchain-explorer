@@ -22,7 +22,7 @@
   "dependencies": {
     "@blockchain-explorer/contracts": "workspace:*",
     "amqplib": "^0.10.0",
-    "bullmq": "^5.0.0",
+    "bullmq": "5.81.5",
     "redis": "^5.0.0"
   },
   "devDependencies": {

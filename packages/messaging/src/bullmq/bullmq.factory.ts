@@ -22,13 +22,17 @@ export class BullMqFactory {
       );
   }
 
-  createQueue<TData>(
+  createQueue<
+    TData,
+    TResult = unknown,
+    TName extends string = string,
+  >(
     name: string,
 
     defaultJobOptions:
       JobsOptions = {},
-  ): Queue<TData> {
-    return new Queue<TData>(
+  ): Queue<TData, TResult, TName> {
+    return new Queue<TData, TResult, TName>(
       name,
       {
         connection:
@@ -74,23 +78,27 @@ export class BullMqFactory {
   createWorker<
     TData,
     TResult = unknown,
+    TName extends string = string,
   >(
     name: string,
 
     processor:
       Processor<
         TData,
-        TResult
+        TResult,
+        TName
       >,
 
     concurrency = 5,
   ): Worker<
     TData,
-    TResult
+    TResult,
+    TName
   > {
     return new Worker<
       TData,
-      TResult
+      TResult,
+      TName
     >(
       name,
       processor,
