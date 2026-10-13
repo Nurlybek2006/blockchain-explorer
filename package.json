@@ -4,9 +4,8 @@
   "private": true,
   "scripts": {
     "build:blockchain-client": "pnpm --dir packages/blockchain-client build",
-    "dev:api": "pnpm --dir apps/api-gateway start:dev",
-    "dev:indexer": "pnpm build:blockchain-client && pnpm --dir apps/indexer-service start:dev",
-    "dev:portfolio": "pnpm --dir apps/portfolio-service start:dev",
+    "dev:api": "pnpm build:packages && pnpm --dir apps/api-gateway start:dev",
+
     "dev:web": "pnpm --dir apps/web dev",
 
     "infra:up": "docker compose --env-file .env -f infrastructure/compose.yml up -d",
@@ -21,6 +20,19 @@
     "db:migrate": "pnpm db:migrate:api && pnpm db:migrate:indexer && pnpm db:migrate:portfolio",
     "db:migrate:api": "pnpm --dir apps/api-gateway db:migrate",
     "db:migrate:indexer": "pnpm --dir apps/indexer-service db:migrate",
-    "db:migrate:portfolio": "pnpm --dir apps/portfolio-service db:migrate"
+    "db:migrate:portfolio": "pnpm --dir apps/portfolio-service db:migrate",
+
+    "build:contracts": "pnpm --dir packages/contracts build",
+
+    
+
+    "build:messaging": "pnpm build:contracts && pnpm --dir packages/messaging build",
+
+    "build:packages": "pnpm build:contracts && pnpm build:blockchain-client && pnpm --dir packages/messaging build",
+
+
+    "dev:indexer": "pnpm build:packages && pnpm --dir apps/indexer-service start:dev",
+
+    "dev:portfolio": "pnpm build:packages && pnpm --dir apps/portfolio-service start:dev"
   }
 }
