@@ -25,12 +25,18 @@ import {
 import {
   blocks,
   checkpoints,
+  outboxEvents,
   syncState,
 } from '../../database/schema/index.js';
 
 import {
   IndexerConfigService,
 } from '../../config/indexer-config.service.js';
+
+import {
+  createEventEnvelope,
+  EVENT_TYPES,
+} from '@blockchain-explorer/contracts';
 
 @Injectable()
 export class ReorgService {
@@ -200,6 +206,33 @@ export class ReorgService {
       );
     }
 
+    const reorgEvent =
+      createEventEnvelope(
+        EVENT_TYPES
+          .CHAIN_REORGANIZED,
+
+        'indexer-service',
+
+        {
+          chainId,
+
+          networkName:
+            getNetworkName(
+              chainId,
+            ),
+
+          detectedAtBlock:
+            blockNumber
+              .toString(),
+
+          commonAncestorBlock:
+            commonAncestor
+              .toString(),
+
+          commonAncestorHash,
+        },
+      );
+
     await this.database.db.transaction(
       async (tx) => {
         /*
@@ -254,6 +287,39 @@ export class ReorgService {
               chainId,
             ),
           );
+
+        await tx
+          .insert(
+            outboxEvents,
+          )
+          .values({
+            id:
+              reorgEvent.id,
+
+            eventType:
+              reorgEvent.type,
+
+            aggregateType:
+              'chain',
+
+            aggregateId:
+              String(chainId),
+
+            payload:
+              reorgEvent,
+
+            status:
+              'pending',
+
+            attempts:
+              0,
+
+            availableAt:
+              new Date(),
+
+            createdAt:
+              new Date(),
+          });
       },
     );
 
@@ -264,4 +330,24 @@ export class ReorgService {
     return true;
   }
 }
+
+function getNetworkName(
+  chainId: number,
+): string {
+  if (
+    chainId === 1
+  ) {
+    return 'ethereum-mainnet';
+  }
+
+  if (
+    chainId ===
+    11155111
+  ) {
+    return 'ethereum-sepolia';
+  }
+
+  return `ethereum-${chainId}`;
+}
 // Blockchain chain өзгерсе, common ancestor тауып, қате branch-тағы block-тарды өшіріп Indexer-ді артқа қайтарады.
+// Blockchain reorg болса Portfolio Service-ке rebuild event жібереді.
