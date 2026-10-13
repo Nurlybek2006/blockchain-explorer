@@ -13,10 +13,16 @@ import {
 import {
   PortfolioJobsWorker,
 } from '../../workers/portfolio-jobs.worker.js';
+import { PricesModule } from '../prices/prices.module.js';
+import { AnalyticsModule } from '../analytics/analytics.module.js';
+import { AlertsModule } from '../alerts/alerts.module.js';
 
 @Module({
   imports: [
     RpcModule,
+    PricesModule,
+    AnalyticsModule,
+    AlertsModule,
   ],
 
   providers: [
@@ -29,4 +35,4 @@ import {
     PortfolioJobsService,
   ],
 })
-export class JobsModule {}  
+export class JobsModule {}

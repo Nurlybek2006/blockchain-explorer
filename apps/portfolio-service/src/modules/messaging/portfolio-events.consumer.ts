@@ -55,6 +55,7 @@ export class PortfolioEventsConsumer
 
   private readonly rabbit:
     RabbitMqClient;
+  private readonly eventsQueue: string;
 
   constructor(
     private readonly database:
@@ -66,6 +67,7 @@ export class PortfolioEventsConsumer
     config:
       ConfigService,
   ) {
+    this.eventsQueue = config.get<string>('PORTFOLIO_EVENTS_QUEUE') ?? 'portfolio.events';
     this.rabbit =
       new RabbitMqClient({
         url:
@@ -96,7 +98,7 @@ export class PortfolioEventsConsumer
       .consume(
         {
           queue:
-            'portfolio.events',
+            this.eventsQueue,
 
           routingKeys: [
             EVENT_TYPES
@@ -215,6 +217,8 @@ export class PortfolioEventsConsumer
   ): Promise<void> {
     const payload =
       event.payload;
+
+    await this.jobs.enqueueTransferAlerts(event);
 
     const matchingPortfolios =
       await this.database.db

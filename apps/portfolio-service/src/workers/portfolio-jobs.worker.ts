@@ -27,6 +27,10 @@ import {
     type Job,
     type Worker,
 } from '@blockchain-explorer/messaging';
+import { isAssetKey, isTokenTransferIndexedEvent } from '@blockchain-explorer/contracts';
+import { PricesService } from '../modules/prices/prices.service.js';
+import { AnalyticsService } from '../modules/analytics/analytics.service.js';
+import { AlertsService } from '../modules/alerts/alerts.service.js';
 
 import {
     DatabaseService,
@@ -86,6 +90,9 @@ export class PortfolioJobsWorker
 
         config:
             ConfigService,
+        private readonly prices: PricesService,
+        private readonly analytics: AnalyticsService,
+        private readonly alerts: AlertsService,
     ) {
         this.chainId = Number(config.get('ETHEREUM_CHAIN_ID') ?? 11155111);
         this.factory =
@@ -197,6 +204,30 @@ export class PortfolioJobsWorker
         switch (
         job.name
         ) {
+            case PORTFOLIO_JOB_NAMES.REFRESH_ASSET_PRICE:
+                if (!('assetKey' in data) || !isAssetKey(data.assetKey)) throw new Error('Invalid price refresh job data');
+                await this.prices.refreshAsset(data.assetKey);
+                return;
+            case PORTFOLIO_JOB_NAMES.REFRESH_ACTIVE_PRICES:
+                if (!('scope' in data) || data.scope !== 'active') throw new Error('Invalid active price job data');
+                await this.prices.refreshActivePrices();
+                return;
+            case PORTFOLIO_JOB_NAMES.SNAPSHOT_PORTFOLIO:
+                if (!('portfolioId' in data) || typeof data.portfolioId !== 'string') throw new Error('Invalid snapshot job data');
+                await this.analytics.snapshotPortfolio(data.portfolioId);
+                return;
+            case PORTFOLIO_JOB_NAMES.REFRESH_PORTFOLIO_VALUATIONS:
+                if (!('scope' in data) || data.scope !== 'active') throw new Error('Invalid valuation job data');
+                await this.analytics.refreshPortfolioValuations();
+                for (const portfolio of await this.database.db.select({ id: portfolios.id }).from(portfolios).where(isNull(portfolios.archivedAt))) {
+                    await this.analytics.snapshotPortfolio(portfolio.id);
+                }
+                return;
+            case PORTFOLIO_JOB_NAMES.EVALUATE_TRANSFER_ALERTS:
+                if (!('event' in data) || !isTokenTransferIndexedEvent(data.event)) throw new Error('Invalid transfer alert job data');
+                if (data.event.payload.chainId !== this.chainId) return;
+                await this.alerts.evaluateTransfer(data.event);
+                return;
             case PORTFOLIO_JOB_NAMES.SYNC_PORTFOLIO:
                 if (!('chainId' in data) || typeof data.chainId !== 'number' ||
                     !Number.isSafeInteger(data.chainId) || data.chainId < 1 ||
@@ -204,6 +235,7 @@ export class PortfolioJobsWorker
                     throw new Error('Invalid sync-portfolio job data');
                 }
                 await this.rebuildPortfolio(data);
+                await this.analytics.snapshotPortfolio(data.portfolioId);
                 return;
             case PORTFOLIO_JOB_NAMES
                 .SYNC_TOKEN_HOLDING:
@@ -239,6 +271,7 @@ export class PortfolioJobsWorker
                         data,
                         true,
                     );
+                await this.analytics.snapshotPortfolio(data.portfolioId);
                 return;
 
             default:

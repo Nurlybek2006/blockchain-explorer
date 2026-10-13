@@ -19,7 +19,11 @@ export function isTokenTransferIndexedEvent(event: EventEnvelope): event is Toke
     'tokenAddress' in data && isEthereumAddress(data.tokenAddress) &&
     'fromAddress' in data && isEthereumAddress(data.fromAddress) &&
     'toAddress' in data && isEthereumAddress(data.toAddress) &&
-    'amountRaw' in data && isUnsignedInteger(data.amountRaw);
+    'amountRaw' in data && isUnsignedInteger(data.amountRaw) &&
+    (!('tokenDecimals' in data) || data.tokenDecimals === undefined ||
+      (typeof data.tokenDecimals === 'number' && Number.isInteger(data.tokenDecimals) && data.tokenDecimals >= 0 && data.tokenDecimals <= 255)) &&
+    (!('tokenSymbol' in data) || data.tokenSymbol === undefined ||
+      (typeof data.tokenSymbol === 'string' && data.tokenSymbol.length <= 64));
 }
 
 export function isChainReorganizedEvent(event: EventEnvelope): event is ChainReorganizedEvent {

@@ -1,3 +1,5 @@
+import type { PortfolioValuationSummary } from './intelligence.contracts.js';
+
 export interface PortfolioCreateInput {
   name: string;
   walletAddress: string;
@@ -29,10 +31,16 @@ export interface PortfolioHoldingResponse {
   balanceFormatted: string;
   lastUpdatedBlock: string | null;
   updatedAt: string;
+  priceUsd?: string | null;
+  valueUsd?: string | null;
+  change24hPercent?: string | null;
+  priceFetchedAt?: string | null;
+  priceStale?: boolean;
 }
 
 export interface PortfolioDetailResponse extends PortfolioResponse {
   holdings: PortfolioHoldingResponse[];
+  summary?: PortfolioValuationSummary;
 }
 
 export interface PortfolioListResponse {

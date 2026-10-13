@@ -489,6 +489,7 @@ export class BlockProcessorService {
           chainId,
           networkName,
           tokenData.transfers,
+          tokenData.tokens,
         );
 
     const events = [

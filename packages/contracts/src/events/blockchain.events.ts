@@ -66,6 +66,10 @@ export interface TokenTransferIndexedPayload {
   toAddress: string;
 
   amountRaw: string;
+
+  // Additive v1 metadata. Legacy producers may omit it; consumers can use RPC.
+  tokenDecimals?: number;
+  tokenSymbol?: string;
 }
 
 export type TokenTransferIndexedEvent =

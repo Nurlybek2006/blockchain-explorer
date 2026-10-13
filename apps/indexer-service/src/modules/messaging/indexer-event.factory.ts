@@ -9,6 +9,7 @@ import {
 
 import type {
   PreparedTokenTransfer,
+  PreparedToken,
 } from '../tokens/token-indexing.service.js';
 
 @Injectable()
@@ -80,59 +81,27 @@ export class IndexerEventFactory {
   createTokenTransfers(
     chainId: number,
     networkName: string,
-    transfers:
-      PreparedTokenTransfer[],
+    transfers: PreparedTokenTransfer[],
+    tokenMetadata: PreparedToken[] = [],
   ) {
-    return transfers.map(
-      (
-        transfer,
-      ) =>
-        createEventEnvelope(
-          EVENT_TYPES
-            .TOKEN_TRANSFER_INDEXED,
-
-          'indexer-service',
-
-          {
-            chainId,
-
-            networkName,
-
-            blockNumber:
-              transfer
-                .blockNumber
-                .toString(),
-
-            transactionHash:
-              transfer
-                .transactionHash,
-
-            transactionIndex:
-              transfer
-                .transactionIndex,
-
-            logIndex:
-              transfer
-                .logIndex,
-
-            tokenAddress:
-              transfer
-                .tokenAddress,
-
-            fromAddress:
-              transfer
-                .fromAddress,
-
-            toAddress:
-              transfer
-                .toAddress,
-
-            amountRaw:
-              transfer
-                .amount,
-          },
-        ),
-    );
+    const metadataByAddress = new Map(tokenMetadata.map((token) => [token.address.toLowerCase(), token]));
+    return transfers.map((transfer) => {
+      const metadata = metadataByAddress.get(transfer.tokenAddress.toLowerCase());
+      return createEventEnvelope(EVENT_TYPES.TOKEN_TRANSFER_INDEXED, 'indexer-service', {
+        chainId,
+        networkName,
+        blockNumber: transfer.blockNumber.toString(),
+        transactionHash: transfer.transactionHash,
+        transactionIndex: transfer.transactionIndex,
+        logIndex: transfer.logIndex,
+        tokenAddress: transfer.tokenAddress,
+        fromAddress: transfer.fromAddress,
+        toAddress: transfer.toAddress,
+        amountRaw: transfer.amount,
+        ...(typeof metadata?.decimals === 'number' && Number.isInteger(metadata.decimals) && metadata.decimals >= 0 && metadata.decimals <= 255 ? { tokenDecimals: metadata.decimals } : {}),
+        ...(typeof metadata?.symbol === 'string' && metadata.symbol.length <= 64 ? { tokenSymbol: metadata.symbol } : {}),
+      });
+    });
   }
 }
 // Indexer database data-дан versioned RabbitMQ event-тер құрады.

@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -45,10 +46,16 @@ export const alerts = pgTable(
     thresholdUsd: numeric(
       'threshold_usd',
       {
-        precision: 38,
-        scale: 2,
+        precision: 78,
+        scale: 18,
       },
     ),
+
+    lastConditionMet: boolean('last_condition_met'),
+
+    lastEvaluatedAt: timestamp('last_evaluated_at', {
+      withTimezone: true,
+    }),
 
     createdAt: timestamp('created_at', {
       withTimezone: true,
@@ -96,6 +103,10 @@ export const alertEvents = pgTable(
 
     payload: jsonb('payload'),
 
+    eventKey: varchar('event_key', {
+      length: 255,
+    }),
+
     triggeredAt: timestamp(
       'triggered_at',
       {
@@ -111,6 +122,9 @@ export const alertEvents = pgTable(
   },
 
   (table) => [
+    uniqueIndex('alert_events_alert_event_key_uq')
+      .on(table.alertId, table.eventKey),
+
     index('alert_events_alert_idx')
       .on(table.alertId),
 

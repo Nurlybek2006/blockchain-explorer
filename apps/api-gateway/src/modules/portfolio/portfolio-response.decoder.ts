@@ -1,4 +1,5 @@
 import { BadGatewayException } from '@nestjs/common';
+import { decodeValuationSummary, readBoolean, readDecimal, readNullableTimestamp } from '../../common/http/response-fields.js';
 import { isUUID } from 'class-validator';
 import { isEthereumAddress } from '@blockchain-explorer/contracts';
 import type {
@@ -64,6 +65,11 @@ export function decodeHolding(body: unknown): PortfolioHoldingResponse {
   return {
     assetKey, assetType, tokenAddress, symbol, name, decimals,
     balanceRaw, balanceFormatted, lastUpdatedBlock, updatedAt,
+    ...(body.priceUsd === undefined ? {} : { priceUsd: readDecimal(body.priceUsd, true, false) }),
+    ...(body.valueUsd === undefined ? {} : { valueUsd: readDecimal(body.valueUsd, true, false) }),
+    ...(body.change24hPercent === undefined ? {} : { change24hPercent: readDecimal(body.change24hPercent) }),
+    ...(body.priceFetchedAt === undefined ? {} : { priceFetchedAt: readNullableTimestamp(body.priceFetchedAt) }),
+    ...(body.priceStale === undefined ? {} : { priceStale: readBoolean(body.priceStale) }),
   };
 }
 
@@ -75,7 +81,7 @@ export function decodeHoldings(body: unknown): PortfolioHoldingResponse[] {
 export function decodePortfolioDetail(body: unknown): PortfolioDetailResponse {
   const portfolio = decodePortfolio(body);
   if (!isRecord(body)) return invalidResponse();
-  return { ...portfolio, holdings: decodeHoldings(body.holdings) };
+  return { ...portfolio, holdings: decodeHoldings(body.holdings), ...(body.summary === undefined ? {} : { summary: decodeValuationSummary(body.summary) }) };
 }
 
 export function decodePortfolioList(body: unknown): PortfolioListResponse {

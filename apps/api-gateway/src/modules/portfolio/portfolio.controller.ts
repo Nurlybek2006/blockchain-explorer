@@ -19,11 +19,13 @@ import { PaginationQueryDto } from '../explorer/dto/pagination-query.dto.js';
 import { CreatePortfolioDto } from './dto/create-portfolio.dto.js';
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto.js';
 import { PortfolioService } from './portfolio.service.js';
+import { IntelligenceClient } from '../intelligence/intelligence.client.js';
+import { PortfolioHistoryQueryDto } from '../intelligence/dto/intelligence.dto.js';
 
 @Controller('portfolio')
 @UseGuards(JwtAuthGuard)
 export class PortfolioController {
-  constructor(private readonly portfolio: PortfolioService) {}
+  constructor(private readonly portfolio: PortfolioService, private readonly intelligence: IntelligenceClient) {}
 
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() input: CreatePortfolioDto) {
@@ -67,5 +69,20 @@ export class PortfolioController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.portfolio.holdings(user.id, id);
+  }
+
+  @Get(':id/history')
+  history(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string, @Query() query: PortfolioHistoryQueryDto) {
+    return this.intelligence.history(user.id, id, query.range, query.limit);
+  }
+
+  @Get(':id/analytics')
+  analytics(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.intelligence.analytics(user.id, id);
+  }
+
+  @Get(':id/valuation')
+  valuation(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.intelligence.valuation(user.id, id);
   }
 }

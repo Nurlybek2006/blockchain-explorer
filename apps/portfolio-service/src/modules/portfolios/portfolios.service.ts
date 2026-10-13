@@ -17,6 +17,8 @@ import {
   type PortfolioRecord,
 } from './portfolios.repository.js';
 import { PortfolioInitialSyncDispatcher } from './portfolio-initial-sync.dispatcher.js';
+import { AnalyticsService } from '../analytics/analytics.service.js';
+import { Optional } from '@nestjs/common';
 
 type PortfolioStore = Pick<PortfoliosRepository,
   'create' | 'listOwned' | 'findOwned' | 'listOwnedHoldings' | 'renameOwned' | 'archiveOwned'>;
@@ -31,6 +33,7 @@ export class PortfoliosService {
     config: ConfigService,
     @Inject(PortfolioInitialSyncDispatcher)
     private readonly initialSync: Pick<PortfolioInitialSyncDispatcher, 'flush'>,
+    @Optional() private readonly intelligence?: AnalyticsService,
   ) {
     this.chainId = Number(config.get<string>('ETHEREUM_CHAIN_ID') ?? 11_155_111);
     if (!Number.isSafeInteger(this.chainId) || this.chainId < 1 || this.chainId > 2_147_483_647) {
@@ -64,12 +67,17 @@ export class PortfoliosService {
   }
 
   async detail(userId: string, id: string): Promise<PortfolioDetailResponse> {
+    if (this.intelligence) {
+      const value = await this.intelligence.valuation(userId, id);
+      return { ...value.portfolio, holdings: value.holdings, summary: value.summary };
+    }
     const portfolio = await this.getOwned(userId, id);
     const holdings = await this.repository.listOwnedHoldings(userId, id);
     return { ...serializePortfolio(portfolio), holdings: holdings.map(serializeHolding) };
   }
 
   async holdings(userId: string, id: string): Promise<PortfolioHoldingResponse[]> {
+    if (this.intelligence) return (await this.intelligence.valuation(userId, id)).holdings;
     await this.getOwned(userId, id);
     return (await this.repository.listOwnedHoldings(userId, id)).map(serializeHolding);
   }

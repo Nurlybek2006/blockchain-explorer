@@ -15,6 +15,10 @@ import {
 } from './modules/health/health.module.js';
 
 import { PortfoliosModule } from './modules/portfolios/portfolios.module.js';
+import { PricesModule } from './modules/prices/prices.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
+import { WatchlistsModule } from './modules/watchlists/watchlists.module.js';
+import { AlertsModule } from './modules/alerts/alerts.module.js';
 
 import {
   MessagingModule,
@@ -36,6 +40,11 @@ import {
     MessagingModule,
 
     PortfoliosModule,
+
+    PricesModule,
+    AnalyticsModule,
+    WatchlistsModule,
+    AlertsModule,
 
     HealthModule,
   ],

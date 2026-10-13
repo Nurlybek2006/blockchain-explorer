@@ -8,40 +8,60 @@ import { dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Run after builds and infra:up. This uses the configured real databases,
-// broker, Redis and RPC; it never supplies a fake blockchain response.
+// Run after builds and infra:up. This uses real PostgreSQL/Redis/RabbitMQ in
+// per-invocation namespaces and the unchanged configured real Ethereum RPC.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiRequire = createRequire(resolve(root, 'apps/api-gateway/package.json'));
 const messagingRequire = createRequire(resolve(root, 'packages/messaging/package.json'));
 const { parse } = apiRequire('dotenv');
 const { Pool } = apiRequire('pg');
+const { drizzle } = apiRequire('drizzle-orm/node-postgres');
+const { migrate } = apiRequire('drizzle-orm/node-postgres/migrator');
 const { createClient } = messagingRequire('redis');
 const amqp = messagingRequire('amqplib');
+const sourceEnv = { ...parse(await readFile(resolve(root, '.env'))), ...process.env };
+const runId = randomBytes(12).toString('hex');
+const databaseMarker = `phase7-verification:${runId}`;
+const cachePrefix = `phase7:${runId}`;
+const queueName = `phase7-${runId}-jobs`;
+const exchangeName = `phase7.${runId}.events`;
+const consumerQueue = `phase7.${runId}.portfolio`;
 const env = {
-  ...parse(await readFile(resolve(root, '.env'))),
-  ...process.env,
+  ...sourceEnv,
+  NODE_ENV: 'test',
   API_GATEWAY_PORT: '3300',
   INDEXER_PORT: '3301',
   PORTFOLIO_PORT: '3302',
   INDEXER_ENABLED: 'false',
+  PRICE_SCHEDULER_ENABLED: 'false',
+  COINGECKO_TIMEOUT_MS: '1500',
+  COINGECKO_MAX_RETRIES: '0',
   INDEXER_INTERNAL_URL: 'http://127.0.0.1:3301',
   PORTFOLIO_INTERNAL_URL: 'http://127.0.0.1:3302',
+  INTERNAL_SERVICE_TOKEN: randomBytes(40).toString('base64url'),
+  JWT_ACCESS_SECRET: randomBytes(48).toString('base64url'),
+  JWT_REFRESH_SECRET: randomBytes(48).toString('base64url'),
+  BCRYPT_ROUNDS: '10',
+  CACHE_PREFIX: cachePrefix,
+  PORTFOLIO_QUEUE_NAME: queueName,
+  RABBITMQ_EXCHANGE: exchangeName,
+  PORTFOLIO_EVENTS_QUEUE: consumerQueue,
 };
 const apiUrl = 'http://127.0.0.1:3300';
-const secretValues = new Set(Object.entries(env)
+const secretValues = new Set(Object.entries({ ...sourceEnv, ...env })
   .filter(([key]) => /SECRET|PASSWORD|TOKEN|URL/.test(key))
   .map(([, value]) => value)
   .filter((value) => typeof value === 'string' && value.length > 3));
 const children = [];
-const testEmails = new Set();
-const testUserIds = new Set();
-const testPortfolioIds = new Set();
+const databases = [];
 const limitations = [];
 let interrupted = false;
 let completedSteps = 0;
 let identity;
 let portfolioDatabase;
 let explorerDatabase;
+let redis;
+let broker;
 
 process.once('SIGINT', () => { interrupted = true; });
 process.once('SIGTERM', () => { interrupted = true; });
@@ -113,6 +133,38 @@ async function freePort(port) {
   });
 }
 
+function databaseUrl(original, name) {
+  const url = new URL(original);
+  assert(['postgres:', 'postgresql:'].includes(url.protocol), 'Expected PostgreSQL URL');
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+function databaseIdentifier(name) {
+  assert(/^phase7_[a-f0-9]{24}_(identity|explorer|portfolio)$/.test(name), 'Refusing database operation outside the generated namespace');
+  assert(name.startsWith(`phase7_${runId}_`), 'Refusing database operation for another invocation');
+  return `"${name}"`;
+}
+
+async function createTestDatabase(app, role, key) {
+  const name = `phase7_${runId}_${role}`;
+  const identifier = databaseIdentifier(name);
+  const admin = new Pool({ connectionString: databaseUrl(sourceEnv[key], 'postgres'), connectionTimeoutMillis: 5000 });
+  const managed = { name, admin, pool: null, created: false, marked: false };
+  databases.push(managed);
+  await admin.query(`CREATE DATABASE ${identifier}`);
+  managed.created = true;
+  await admin.query(`COMMENT ON DATABASE ${identifier} IS '${databaseMarker}'`);
+  managed.marked = true;
+  env[key] = databaseUrl(sourceEnv[key], name);
+  secretValues.add(env[key]);
+  managed.pool = new Pool({ connectionString: env[key], connectionTimeoutMillis: 5000 });
+  await migrate(drizzle(managed.pool), { migrationsFolder: resolve(root, 'apps', app, 'src/database/migrations') });
+  if (role === 'identity') identity = managed.pool;
+  if (role === 'portfolio') portfolioDatabase = managed.pool;
+  if (role === 'explorer') explorerDatabase = managed.pool;
+}
+
 function startService(name) {
   const entry = pathToFileURL(resolve(root, 'apps', name, 'dist/main.js')).href;
   // IPC reaches only the Node process spawned here. Emitting its registered Nest
@@ -171,11 +223,9 @@ async function rpc(method, params = []) {
 async function register(label) {
   const email = `phase7-${label}-${randomUUID()}@example.com`;
   const password = `${randomBytes(24).toString('base64url')}Aa1!`;
-  testEmails.add(email);
   secretValues.add(password);
   const response = await http('POST', '/auth/register', 201, { email: ` ${email.toUpperCase()} `, password, displayName: ' Verification User ' });
   assert(response?.user && typeof response.user.id === 'string', 'Register did not return user ID');
-  testUserIds.add(response.user.id);
   assert.equal(response.user.email, email);
   assert.equal(response.user.displayName, 'Verification User');
   assert.equal(typeof response.accessToken, 'string');
@@ -187,7 +237,6 @@ async function createPortfolio(user, name) {
   const walletAddress = `0x${randomBytes(20).toString('hex')}`;
   const response = await http('POST', '/portfolio', 201, { name, walletAddress: `0x${walletAddress.slice(2).toUpperCase()}` }, user.accessToken);
   assert.equal(typeof response?.id, 'string', 'Portfolio response missing ID');
-  testPortfolioIds.add(response.id);
   assert.equal(response.walletAddress, walletAddress, 'Wallet must be normalized');
   assert.equal(response.chainId, Number(env.ETHEREUM_CHAIN_ID ?? 11155111));
   return response;
@@ -249,72 +298,81 @@ async function stopServices() {
   for (const result of results) if (result.status === 'rejected') throw result.reason;
 }
 
-async function cleanup() {
-  if (!identity || !portfolioDatabase) return;
-  // Exact generated emails recover IDs if a request committed before its response
-  // failed. No prefix query, wildcard deletion, queue drain or database reset.
-  if (testEmails.size > 0) {
-    const users = await identity.query('SELECT id FROM users WHERE email = ANY($1::text[])', [Array.from(testEmails)]);
-    for (const user of users.rows) testUserIds.add(user.id);
-  }
-  if (testUserIds.size === 0) return;
-  const owned = await portfolioDatabase.query('SELECT id FROM portfolios WHERE user_id = ANY($1::uuid[])', [Array.from(testUserIds)]);
-  for (const item of owned.rows) testPortfolioIds.add(item.id);
-  const ids = Array.from(testPortfolioIds);
-  const failures = [];
-  if (ids.length > 0) {
-    const { BullMqFactory } = await import(pathToFileURL(resolve(root, 'packages/messaging/dist/index.js')).href);
-    const queue = new BullMqFactory({ redisUrl: env.REDIS_URL }).createQueue(env.PORTFOLIO_QUEUE_NAME ?? 'portfolio-jobs');
-    queue.on('error', () => undefined);
-    try {
-      for (const id of ids) {
-        try {
-          const job = await queue.getJob(`initial-${id}`);
-          if (job) {
-            assert.equal(job.data.portfolioId, id, 'Refusing to remove an unrelated queue job');
-            await job.remove();
-          }
-        } catch (error) {
-          failures.push(`Initial-sync job removal failed: ${redact(error instanceof Error ? error.message : error)}`);
-        }
-      }
-    } finally {
-      await queue.close();
+async function cleanupRedis() {
+  if (!redis?.isOpen) return;
+  const prefixes = [`${cachePrefix}:`, `bull:${queueName}:`];
+  assert.equal(cachePrefix, `phase7:${runId}`, 'Refusing unrelated cache namespace');
+  assert.equal(queueName, `phase7-${runId}-jobs`, 'Refusing unrelated BullMQ namespace');
+  for (const prefix of prefixes) {
+    for await (const scanned of redis.scanIterator({ MATCH: `${prefix}*`, COUNT: 100 })) {
+      const keys = Array.isArray(scanned) ? scanned : [scanned];
+      assert(keys.every((key) => typeof key === 'string' && key.startsWith(prefix)), 'Refusing unrelated Redis key');
+      if (keys.length > 0) await redis.del(keys);
     }
-    const client = await portfolioDatabase.connect();
+  }
+}
+
+async function cleanupBroker() {
+  if (!broker) return;
+  const topology = [['queue', consumerQueue], ['queue', `${consumerQueue}.dlq`],
+    ['exchange', exchangeName], ['exchange', `${exchangeName}.dlx`]];
+  for (const [kind, name] of topology) {
+    assert(name.startsWith(`phase7.${runId}.`), 'Refusing unrelated broker topology');
+    const channel = await broker.createChannel();
+    channel.on('error', () => undefined);
     try {
-      await client.query('BEGIN');
-      await client.query("DELETE FROM outbox_events WHERE aggregate_type = 'portfolio' AND aggregate_id = ANY($1::text[])", [ids]);
-      await client.query('DELETE FROM portfolios WHERE id = ANY($1::uuid[]) AND user_id = ANY($2::uuid[])', [ids, Array.from(testUserIds)]);
-      await client.query('COMMIT');
+      if (kind === 'queue') await channel.deleteQueue(name);
+      else await channel.deleteExchange(name);
     } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
+      if (error?.code !== 404) throw error;
     } finally {
-      client.release();
+      await channel.close().catch(() => undefined);
     }
   }
-  await identity.query('DELETE FROM users WHERE id = ANY($1::uuid[]) AND email = ANY($2::text[])', [Array.from(testUserIds), Array.from(testEmails)]);
+}
+
+async function cleanupDatabases() {
+  const failures = [];
+  for (const database of databases) {
+    try {
+      if (database.pool) {
+        await database.pool.end();
+        database.pool = null;
+      }
+      if (!database.created) continue;
+      const identifier = databaseIdentifier(database.name);
+      const proof = await database.admin.query("SELECT shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname = $1", [database.name]);
+      assert(database.marked && proof.rows.length === 1 && proof.rows[0].marker === databaseMarker,
+        'Refusing database drop without this invocation ownership marker');
+      await database.admin.query(`DROP DATABASE ${identifier}`);
+      database.created = false;
+    } catch (error) {
+      failures.push(redact(error instanceof Error ? error.message : error));
+    }
+  }
   if (failures.length > 0) throw new Error(failures.join('; '));
-  console.log('PASS cleanup exact generated users, portfolios, initial-sync jobs and outbox intents');
 }
 
 try {
-  for (const key of ['IDENTITY_DATABASE_URL', 'EXPLORER_DATABASE_URL', 'PORTFOLIO_DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL', 'ETHEREUM_RPC_URL', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
-    if (!env[key]) throw new Error(`Missing required setting ${key}`);
+  console.log('Phase 7 isolated verification: real PostgreSQL/Redis/RabbitMQ and the configured real Ethereum RPC.');
+  for (const key of ['IDENTITY_DATABASE_URL', 'EXPLORER_DATABASE_URL', 'PORTFOLIO_DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL', 'ETHEREUM_RPC_URL']) {
+    if (!sourceEnv[key]) throw new Error(`Missing required setting ${key}`);
   }
   await Promise.all([freePort(3300), freePort(3301), freePort(3302),
     ...['api-gateway', 'indexer-service', 'portfolio-service'].map((name) => access(resolve(root, 'apps', name, 'dist/main.js')))]);
-  identity = new Pool({ connectionString: env.IDENTITY_DATABASE_URL, connectionTimeoutMillis: 5000 });
-  portfolioDatabase = new Pool({ connectionString: env.PORTFOLIO_DATABASE_URL, connectionTimeoutMillis: 5000 });
-  explorerDatabase = new Pool({ connectionString: env.EXPLORER_DATABASE_URL, connectionTimeoutMillis: 5000 });
-  await step('real PostgreSQL / Redis / RabbitMQ connections', async () => {
+  await step('three isolated migrated PostgreSQL databases / Redis / RabbitMQ connections', async () => {
+    await createTestDatabase('api-gateway', 'identity', 'IDENTITY_DATABASE_URL');
+    await createTestDatabase('indexer-service', 'explorer', 'EXPLORER_DATABASE_URL');
+    await createTestDatabase('portfolio-service', 'portfolio', 'PORTFOLIO_DATABASE_URL');
     await Promise.all([identity.query('SELECT 1'), portfolioDatabase.query('SELECT 1'), explorerDatabase.query('SELECT 1')]);
-    const redis = createClient({ url: env.REDIS_URL, socket: { connectTimeout: 5000, reconnectStrategy: false } });
+    redis = createClient({ url: env.REDIS_URL, socket: { connectTimeout: 5000, reconnectStrategy: false } });
     redis.on('error', () => undefined);
-    try { await redis.connect(); assert.equal(await redis.ping(), 'PONG'); } finally { if (redis.isOpen) await redis.quit(); }
-    const broker = await amqp.connect(env.RABBITMQ_URL, { timeout: 5000 });
-    try { const channel = await broker.createChannel(); await channel.close(); } finally { await broker.close(); }
+    await redis.connect();
+    assert.equal(await redis.ping(), 'PONG');
+    broker = await amqp.connect(env.RABBITMQ_URL, { timeout: 5000 });
+    broker.on('error', () => undefined);
+    const channel = await broker.createChannel();
+    await channel.close();
   });
   for (const name of ['indexer-service', 'portfolio-service', 'api-gateway']) startService(name);
   await step('three built services start healthy with chain scanning disabled', async () => {
@@ -436,15 +494,26 @@ try {
     childrenClosed = children.every((service) => service.exited);
   }
   if (childrenClosed) {
-    try { await cleanup(); } catch (error) {
-      process.exitCode = 1;
-      console.error(`FAIL cleanup: ${redact(error instanceof Error ? error.message : error)}`);
+    for (const [label, action] of [['Redis namespace', cleanupRedis], ['RabbitMQ namespace', cleanupBroker], ['temporary databases', cleanupDatabases]]) {
+      try { await action(); console.log(`PASS cleanup own ${label}`); } catch (error) {
+        process.exitCode = 1;
+        console.error(`FAIL cleanup ${label}: ${redact(error instanceof Error ? error.message : error)}`);
+      }
     }
   } else {
     process.exitCode = 1;
-    console.error('FAIL cleanup skipped because an owned child is still running; generated rows preserved for inspection');
+    console.error('FAIL cleanup skipped because an owned child is still running; isolated resources preserved for inspection');
   }
-  const pools = [identity, portfolioDatabase, explorerDatabase].filter(Boolean);
+  if (broker) await broker.close().catch((error) => {
+    process.exitCode = 1;
+    console.error(`FAIL closing broker connection: ${redact(error.message)}`);
+  });
+  if (redis?.isOpen) await redis.quit().catch((error) => {
+    process.exitCode = 1;
+    console.error(`FAIL closing Redis connection: ${redact(error.message)}`);
+    redis.destroy();
+  });
+  const pools = databases.flatMap((database) => [database.pool, database.admin]).filter(Boolean);
   const closed = await Promise.allSettled(pools.map((pool) => pool.end()));
   for (const result of closed) if (result.status === 'rejected') {
     process.exitCode = 1;
