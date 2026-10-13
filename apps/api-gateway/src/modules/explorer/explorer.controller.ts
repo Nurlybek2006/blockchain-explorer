@@ -11,19 +11,19 @@ import {
 } from './dto/pagination-query.dto.js';
 
 import {
-  IndexerExplorerClient,
-} from './indexer-explorer.client.js';
+  ExplorerService,
+} from './explorer.service.js';
 
 @Controller()
 export class ExplorerController {
   constructor(
-    private readonly indexer:
-      IndexerExplorerClient,
-  ) {}
+    private readonly explorer:
+      ExplorerService,
+  ) { }
 
   @Get('stats')
   stats() {
-    return this.indexer
+    return this.explorer
       .getStats();
   }
 
@@ -33,7 +33,7 @@ export class ExplorerController {
     query:
       PaginationQueryDto,
   ) {
-    return this.indexer
+    return this.explorer
       .getBlocks(
         query.page,
         query.limit,
@@ -55,7 +55,7 @@ export class ExplorerController {
       );
     }
 
-    return this.indexer
+    return this.explorer
       .getBlock(
         number,
       );
@@ -76,7 +76,7 @@ export class ExplorerController {
       );
     }
 
-    return this.indexer
+    return this.explorer
       .getTransaction(
         hash.toLowerCase(),
       );
@@ -97,7 +97,7 @@ export class ExplorerController {
       address,
     );
 
-    return this.indexer
+    return this.explorer
       .getAddress(
         address.toLowerCase(),
         query.page,
@@ -111,7 +111,7 @@ export class ExplorerController {
     query:
       PaginationQueryDto,
   ) {
-    return this.indexer
+    return this.explorer
       .getTokens(
         query.page,
         query.limit,
@@ -133,7 +133,7 @@ export class ExplorerController {
       address,
     );
 
-    return this.indexer
+    return this.explorer
       .getToken(
         address.toLowerCase(),
         query.page,

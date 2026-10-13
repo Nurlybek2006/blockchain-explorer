@@ -38,6 +38,10 @@ import {
   BlockScannerWorker,
 } from '../../workers/block-scanner.worker.js';
 
+import {
+  MessagingModule,
+} from '../messaging/messaging.module.js';
+
 @Module({
   imports: [
     RpcModule,
@@ -45,6 +49,8 @@ import {
     TokensModule,
 
     AddressesModule,
+
+    MessagingModule,
   ],
 
   providers: [

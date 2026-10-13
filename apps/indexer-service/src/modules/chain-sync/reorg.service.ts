@@ -48,7 +48,7 @@ export class ReorgService {
 
     private readonly config:
       IndexerConfigService,
-  ) {}
+  ) { }
 
   async ensureCanonicalParent(
     chainId: number,
@@ -57,9 +57,9 @@ export class ReorgService {
   ): Promise<boolean> {
     if (
       incomingBlock.number ===
-        null ||
+      null ||
       incomingBlock.hash ===
-        null
+      null
     ) {
       return false;
     }
@@ -126,15 +126,15 @@ export class ReorgService {
 
     const minimumHeight =
       blockNumber >
-      BigInt(
-        this.config
-          .reorgMaxDepth,
-      )
+        BigInt(
+          this.config
+            .reorgMaxDepth,
+        )
         ? blockNumber -
-          BigInt(
-            this.config
-              .reorgMaxDepth,
-          )
+        BigInt(
+          this.config
+            .reorgMaxDepth,
+        )
         : 0n;
 
     for (
@@ -171,8 +171,8 @@ export class ReorgService {
           remoteBlock?.hash &&
           remoteBlock.hash
             .toLowerCase() ===
-            localBlock.hash
-              .toLowerCase()
+          localBlock.hash
+            .toLowerCase()
         ) {
           commonAncestor =
             height;

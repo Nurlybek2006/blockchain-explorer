@@ -10,6 +10,10 @@ import {
   IndexerExplorerClient,
 } from './indexer-explorer.client.js';
 
+import {
+  ExplorerService,
+} from './explorer.service.js';
+
 @Module({
   controllers: [
     ExplorerController,
@@ -17,10 +21,12 @@ import {
 
   providers: [
     IndexerExplorerClient,
+
+    ExplorerService,
   ],
 
   exports: [
-    IndexerExplorerClient,
+    ExplorerService,
   ],
 })
 export class ExplorerModule {}

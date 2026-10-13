@@ -18,6 +18,10 @@ import {
   ExplorerModule,
 } from './modules/explorer/explorer.module.js';
 
+import {
+  CacheModule,
+} from './modules/cache/cache.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,6 +34,8 @@ import {
     }),
 
     DatabaseModule,
+
+    CacheModule,
 
     ExplorerModule,
 

@@ -46,6 +46,14 @@ import {
   AddressIndexingService,
 } from '../addresses/address-indexing.service.js';
 
+import {
+  outboxEvents,
+} from '../../database/schema/index.js';
+
+import {
+  IndexerEventFactory,
+} from '../messaging/indexer-event.factory.js';
+
 @Injectable()
 export class BlockProcessorService {
   private readonly logger =
@@ -68,7 +76,10 @@ export class BlockProcessorService {
 
     private readonly addressIndexer:
       AddressIndexingService,
-  ) {}
+
+    private readonly eventFactory:
+      IndexerEventFactory,
+  ) { }
 
   async process(
     chainId: number,
@@ -82,9 +93,9 @@ export class BlockProcessorService {
   ): Promise<void> {
     if (
       block.number ===
-        null ||
+      null ||
       block.hash ===
-        null
+      null
     ) {
       throw new Error(
         'Cannot index pending block without number/hash',
@@ -202,16 +213,16 @@ export class BlockProcessorService {
       baseFeePerGas:
         block.baseFeePerGas
           ? hexToBigInt(
-              block
-                .baseFeePerGas,
-            ).toString()
+            block
+              .baseFeePerGas,
+          ).toString()
           : null,
 
       size:
         block.size
           ? hexToNumber(
-              block.size,
-            )
+            block.size,
+          )
           : null,
 
       transactionCount:
@@ -285,34 +296,34 @@ export class BlockProcessorService {
             transaction
               .gasPrice
               ? hexToBigInt(
-                  transaction
-                    .gasPrice,
-                ).toString()
+                transaction
+                  .gasPrice,
+              ).toString()
               : null,
 
           maxFeePerGas:
             transaction
               .maxFeePerGas
               ? hexToBigInt(
-                  transaction
-                    .maxFeePerGas,
-                ).toString()
+                transaction
+                  .maxFeePerGas,
+              ).toString()
               : null,
 
           maxPriorityFeePerGas:
             transaction
               .maxPriorityFeePerGas
               ? hexToBigInt(
-                  transaction
-                    .maxPriorityFeePerGas,
-                ).toString()
+                transaction
+                  .maxPriorityFeePerGas,
+              ).toString()
               : null,
 
           type:
             transaction.type
               ? hexToNumber(
-                  transaction.type,
-                )
+                transaction.type,
+              )
               : 0,
 
           input:
@@ -363,9 +374,9 @@ export class BlockProcessorService {
             receipt
               .effectiveGasPrice
               ? hexToBigInt(
-                  receipt
-                    .effectiveGasPrice,
-                ).toString()
+                receipt
+                  .effectiveGasPrice,
+              ).toString()
               : null,
 
           logsBloom:
@@ -380,11 +391,11 @@ export class BlockProcessorService {
             (log) => {
               if (
                 log.transactionHash ===
-                  null ||
+                null ||
                 log.blockNumber ===
-                  null ||
+                null ||
                 log.logIndex ===
-                  null
+                null
               ) {
                 throw new Error(
                   'Confirmed transaction log is missing required fields',
@@ -442,6 +453,48 @@ export class BlockProcessorService {
             },
           ),
       );
+
+    const blockEvent =
+      this.eventFactory
+        .createBlockIndexed({
+          chainId,
+
+          networkName,
+
+          blockNumber,
+
+          blockHash,
+
+          parentHash:
+            blockRow.parentHash,
+
+          timestamp:
+            blockRow.timestamp,
+
+          transactionCount:
+            block.transactions
+              .length,
+
+          logCount:
+            logRows.length,
+
+          tokenTransfers:
+            tokenData
+              .transfers,
+        });
+
+    const transferEvents =
+      this.eventFactory
+        .createTokenTransfers(
+          chainId,
+          networkName,
+          tokenData.transfers,
+        );
+
+    const events = [
+      blockEvent,
+      ...transferEvents,
+    ];
 
     await this.database.db
       .transaction(
@@ -766,15 +819,82 @@ export class BlockProcessorService {
               },
             });
 
+
+          /*
+ * TRANSACTIONAL OUTBOX
+ */
+          for (
+            const chunk of
+            chunkArray(
+              events,
+              250,
+            )
+          ) {
+            if (
+              chunk.length ===
+              0
+            ) {
+              continue;
+            }
+
+            await tx
+              .insert(
+                outboxEvents,
+              )
+              .values(
+                chunk.map(
+                  (
+                    event,
+                  ) => ({
+                    id:
+                      event.id,
+
+                    eventType:
+                      event.type,
+
+                    aggregateType:
+                      event.type ===
+                        'block.indexed.v1'
+                        ? 'block'
+                        : 'token-transfer',
+
+                    aggregateId:
+                      event.type ===
+                        'block.indexed.v1'
+                        ? event
+                          .payload
+                          .blockNumber
+                        : `${event.payload.transactionHash}:${event.payload.logIndex}`,
+
+                    payload:
+                      event,
+
+                    status:
+                      'pending',
+
+                    attempts:
+                      0,
+
+                    availableAt:
+                      now,
+
+                    createdAt:
+                      now,
+                  }),
+                ),
+              )
+              .onConflictDoNothing();
+          }
+
           /*
            * CHECKPOINT
            */
           if (
             blockNumber %
-              BigInt(
-                this.config
-                  .checkpointInterval,
-              ) ===
+            BigInt(
+              this.config
+                .checkpointInterval,
+            ) ===
             0n
           ) {
             await tx
@@ -827,3 +947,4 @@ export class BlockProcessorService {
 // Block, transaction, receipt және smart-contract log-тарды бір PostgreSQL transaction ішінде сақтайды. Бір бөлігі қате болса, block толық rollback болады.
 // Бұл — indexer-дің негізгі ядросы.
 // Бір block-ты толық өңдейді: transaction, receipt, raw log, ERC-20 transfer, token және address деректерін бір PostgreSQL transaction ішінде сақтайды.
+// Blockchain data мен event бір PostgreSQL transaction ішінде сақталады. Database commit болса event міндетті түрде outbox-та болады.
