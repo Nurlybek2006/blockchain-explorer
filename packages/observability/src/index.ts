@@ -1,0 +1,13 @@
+export { withSpan, recordSpanError } from './tracing.js';
+export { recordCounter, recordHistogram, recordGauge, registerPoolMetrics, metricAttributes, boundedRoute, resetMetricInstruments } from './metrics.js';
+export type { CounterName, HistogramName, GaugeName, MetricName, PoolStats } from './metrics.js';
+export { currentRequestId, withRequestId, injectTraceContext, withTraceContext, propagationHeaders, validatedTraceCarrier, validRequestId } from './context.js';
+export type { TraceCarrier } from './context.js';
+export { StructuredLogger } from './logger.js';
+export type { StructuredLoggerOptions, LogRecord } from './logger.js';
+export { requestTelemetry } from './http.js';
+export { sanitize, sanitizeText, sanitizedException } from './sanitize.js';
+export { safeAttributes } from './attributes.js';
+export type { TelemetryAttributes } from './attributes.js';
+export { context, trace, propagation, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+export type { Span, Context, SpanOptions } from '@opentelemetry/api';

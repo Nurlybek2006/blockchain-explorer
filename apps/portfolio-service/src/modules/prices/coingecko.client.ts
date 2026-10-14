@@ -5,6 +5,7 @@ import { isEthereumAddress } from '@blockchain-explorer/contracts';
 import { loadPricesConfig, type PricesConfig } from './prices.config.js';
 import { normalizePriceDecimal } from './price-decimal.js';
 import { PriceRequestLimiter } from './price-request-limiter.js';
+import { recordCounter, recordHistogram, withSpan, type Span } from '@blockchain-explorer/observability';
 
 export interface CoinGeckoPrice {
   priceUsd: string;
@@ -57,7 +58,7 @@ export class CoinGeckoClient implements OnModuleDestroy {
     for (let attempt = 0; ; attempt += 1) {
       if (this.closing) throw new Error('Price client is closing');
       try {
-        return await this.limiter.schedule(() => this.fetchOnce(url));
+        return await this.limiter.schedule(() => this.fetchOnce(url, attempt));
       } catch (error) {
         const retryable = !(error instanceof CoinGeckoHttpError) || error.status === 429 || error.status >= 500;
         if (!retryable || this.closing || attempt >= this.options.maxRetries) throw error;
@@ -73,7 +74,18 @@ export class CoinGeckoClient implements OnModuleDestroy {
     }
   }
 
-  private async fetchOnce(url: URL): Promise<string> {
+  private async fetchOnce(url: URL, attempt: number): Promise<string> {
+    return withSpan('coingecko.request', {
+      'http.request.method': 'GET',
+      'retry.attempt': attempt,
+      'coingecko.operation': url.pathname.endsWith('/simple/price') ? 'native_price' : 'token_price',
+    }, (span) => this.fetchRequest(url, span));
+  }
+
+  private async fetchRequest(url: URL, span: Span): Promise<string> {
+    const started = performance.now();
+    let status = 'transport_error';
+    recordCounter('coingecko_requests_total', 1, { method: 'GET' });
     const controller = new AbortController();
     this.controllers.add(controller);
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
@@ -81,7 +93,9 @@ export class CoinGeckoClient implements OnModuleDestroy {
     if (this.options.apiKey) headers[`x-cg-${this.options.apiKeyType}-api-key`] = this.options.apiKey;
     try {
       const response = await fetch(url, { headers, signal: controller.signal });
+      span.setAttribute('http.response.status_code', response.status);
       if (!response.ok) {
+        status = response.status === 429 ? 'rate_limited' : response.status >= 500 ? 'server_error' : 'client_error';
         const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
         if (response.status === 429) this.limiter.coolDown(retryAfterMs ?? this.options.retryBaseDelayMs);
         await response.body?.cancel();
@@ -89,8 +103,13 @@ export class CoinGeckoClient implements OnModuleDestroy {
       }
       const raw = await response.text();
       if (raw.length > 1_048_576) throw new Error('CoinGecko response is too large');
+      status = 'success';
       return raw;
+    } catch (error) {
+      recordCounter('coingecko_errors_total', 1, { status });
+      throw error;
     } finally {
+      recordHistogram('coingecko_duration_seconds', (performance.now() - started) / 1000, { status });
       clearTimeout(timer);
       this.controllers.delete(controller);
     }

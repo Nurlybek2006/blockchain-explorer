@@ -15,7 +15,9 @@ import {
     eq,
     lte,
     sql,
+    inArray,
 } from 'drizzle-orm';
+import { recordGauge, withTraceContext } from '@blockchain-explorer/observability';
 
 import {
     isEventEnvelope,
@@ -57,6 +59,7 @@ export class OutboxPublisherWorker
 
     private stopping =
         false;
+    private nextBacklogObservationAt = 0;
 
     private loopPromise:
         Promise<void> | null =
@@ -129,6 +132,7 @@ export class OutboxPublisherWorker
             !this.stopping
         ) {
             try {
+                await this.observeBacklog();
                 await this
                     .recoverStaleJobs();
 
@@ -246,10 +250,8 @@ export class OutboxPublisherWorker
                     );
                 }
 
-                await this.publisher
-                    .publish(
-                        row.payload,
-                    );
+                const event = row.payload;
+                await withTraceContext(event.metadata?.traceContext, () => this.publisher.publish(event));
 
                 await this.database.db
                     .update(
@@ -315,6 +317,24 @@ export class OutboxPublisherWorker
         }
 
         return rows.length;
+    }
+
+    private async observeBacklog(): Promise<void> {
+        if (Date.now() < this.nextBacklogObservationAt) return;
+        this.nextBacklogObservationAt = Date.now() + 15_000;
+        // Bounded-frequency aggregates; scrapes read cached gauge values without database queries.
+        // A metrics-only observation failure never interrupts publishing committed business events.
+        try {
+            const [row] = await this.database.db.select({
+                backlog: sql<number>`count(*)::integer`,
+                oldestSeconds: sql<number>`coalesce(extract(epoch from (now() - min(${outboxEvents.createdAt})))::double precision, 0)`,
+            }).from(outboxEvents).where(inArray(outboxEvents.status, ['pending', 'processing']));
+            recordGauge('indexer_outbox_backlog', row?.backlog ?? 0);
+            recordGauge('indexer_outbox_oldest_pending_age_seconds', Math.max(0, row?.oldestSeconds ?? 0));
+        } catch {
+            recordGauge('indexer_outbox_backlog', null);
+            recordGauge('indexer_outbox_oldest_pending_age_seconds', null);
+        }
     }
 
     private async claim(

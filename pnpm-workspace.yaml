@@ -5,4 +5,5 @@ allowBuilds:
   bcrypt: true
   esbuild: true
   msgpackr-extract: true
+  protobufjs: true
   unrs-resolver: true

@@ -9,6 +9,7 @@ import {
   ConfigService,
 } from '@nestjs/config';
 import { decodeBlockDetail, decodeContract, decodeNetworkStatus, decodeSearch, decodeTraces } from './advanced-explorer.decoder.js';
+import { propagationHeaders } from '@blockchain-explorer/observability';
 
 @Injectable()
 export class IndexerExplorerClient {
@@ -183,6 +184,7 @@ export class IndexerExplorerClient {
               'GET',
 
             headers: {
+              ...propagationHeaders(),
               'x-internal-service-token':
                 this.token,
 

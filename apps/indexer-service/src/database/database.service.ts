@@ -14,6 +14,7 @@ import {
 
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
+import { registerPoolMetrics } from '@blockchain-explorer/observability';
 
 import * as schema from './schema/index.js';
 
@@ -25,6 +26,7 @@ export class DatabaseService
     new Logger(DatabaseService.name);
 
   private readonly pool: Pool;
+  private readonly unregisterPoolMetrics: () => void;
 
   readonly db: NodePgDatabase<
     typeof schema
@@ -62,6 +64,7 @@ export class DatabaseService
       application_name:
         'blockchain-explorer-indexer',
     });
+    this.unregisterPoolMetrics = registerPoolMetrics(this.pool, 'explorer_db');
 
     this.pool.on(
       'error',
@@ -96,6 +99,7 @@ export class DatabaseService
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.unregisterPoolMetrics();
     await this.pool.end();
 
     this.logger.log(

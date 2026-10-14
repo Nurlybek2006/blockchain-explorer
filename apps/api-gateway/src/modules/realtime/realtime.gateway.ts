@@ -4,6 +4,7 @@ import { WebSocketGateway, type OnGatewayConnection, type OnGatewayDisconnect, t
 import { WebSocket, type WebSocketServer, type VerifyClientCallbackAsync } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { RealtimeExplorerEvent } from '@blockchain-explorer/contracts';
+import { recordCounter, recordGauge } from '@blockchain-explorer/observability';
 
 export function isAllowedRealtimeOrigin(origin: string | undefined, webOrigin: string): boolean {
   // Origin-less CLI/native clients receive only already-public Explorer data.
@@ -30,13 +31,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   afterInit(_server: WebSocketServer): void {
+    recordGauge('websocket_connections_active', 0);
     this.heartbeat = setInterval(() => {
       for (const [client, state] of this.clients) {
         if (!state.alive || client.readyState !== WebSocket.OPEN || client.bufferedAmount > 262_144) {
-          this.clients.delete(client); client.terminate(); continue;
+          this.removeClient(client); client.terminate(); continue;
         }
         state.alive = false;
-        try { client.ping(); } catch { this.clients.delete(client); client.terminate(); }
+        try { client.ping(); } catch { this.removeClient(client); client.terminate(); }
       }
     }, 30_000);
     this.heartbeat.unref();
@@ -50,33 +52,44 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
     const state = { alive: true, messages: 0, windowStart: Date.now(), ip };
     this.clients.set(client, state);
+    recordCounter('websocket_connections_total');
+    recordGauge('websocket_connections_active', this.clients.size);
     client.on('pong', () => { state.alive = true; });
-    client.on('error', () => { this.clients.delete(client); client.terminate(); });
+    client.on('error', () => { this.removeClient(client); client.terminate(); });
     // Public broadcasts have no client-submitted subscriptions, identities or commands.
     client.on('message', () => {
       const now = Date.now();
       if (now - state.windowStart > 10_000) { state.windowStart = now; state.messages = 0; }
       state.messages += 1;
-      if (state.messages > 5) { this.clients.delete(client); client.close(1008, 'Client message limit exceeded'); }
+      if (state.messages > 5) { this.removeClient(client); client.close(1008, 'Client message limit exceeded'); }
     });
   }
 
-  handleDisconnect(client: WebSocket): void { this.clients.delete(client); }
+  handleDisconnect(client: WebSocket): void { this.removeClient(client); }
+
+  private removeClient(client: WebSocket): void {
+    if (this.clients.delete(client)) {
+      recordCounter('websocket_disconnects_total');
+      recordGauge('websocket_connections_active', this.clients.size);
+    }
+  }
 
   broadcast(event: RealtimeExplorerEvent): void {
+    recordCounter('websocket_events_broadcast_total', 1, { event_type: event.type });
     const body = JSON.stringify(event);
     for (const client of this.clients.keys()) {
       if (client.readyState !== WebSocket.OPEN || client.bufferedAmount > 262_144) {
-        this.clients.delete(client); client.terminate(); continue;
+        this.removeClient(client); client.terminate(); continue;
       }
-      try { client.send(body, (error) => { if (error) { this.clients.delete(client); client.terminate(); } }); }
-      catch { this.clients.delete(client); client.terminate(); }
+      try { client.send(body, (error) => { if (error) { recordCounter('websocket_broadcast_errors_total', 1, { event_type: event.type }); this.removeClient(client); client.terminate(); } }); }
+      catch { recordCounter('websocket_broadcast_errors_total', 1, { event_type: event.type }); this.removeClient(client); client.terminate(); }
     }
   }
 
   onModuleDestroy(): void {
     if (this.heartbeat) clearInterval(this.heartbeat);
     for (const client of this.clients.keys()) {
+      this.removeClient(client);
       client.close(1001, 'Server shutting down');
       const timer = setTimeout(() => client.terminate(), 500); timer.unref();
     }

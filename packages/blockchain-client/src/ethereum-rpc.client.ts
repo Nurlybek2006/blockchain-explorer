@@ -27,8 +27,13 @@ import {
     hexToBigInt,
     sleep,
 } from './utils.js';
+import { recordCounter, recordHistogram, SpanKind, withSpan } from '@blockchain-explorer/observability';
+
+const metricMethods = new Set(['eth_chainId', 'eth_blockNumber', 'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getTransactionByHash', 'eth_getTransactionReceipt', 'eth_getLogs', 'eth_getBalance', 'eth_getCode', 'eth_call', 'debug_traceTransaction']);
+function metricMethod(method: string): string { return metricMethods.has(method) ? method : 'other'; }
 
 export class EthereumRpcClient {
+    private telemetryChainId: number | undefined;
     private closing = false;
     private readonly controllers = new Set<AbortController>();
     private readonly url: string;
@@ -132,11 +137,16 @@ export class EthereumRpcClient {
                             this.executeRequest<T>(
                                 method,
                                 params,
+                                attempt,
                             ),
                     );
             } catch (error) {
                 lastError =
                     error;
+
+                if (error instanceof RpcHttpError && error.status === 429) {
+                    recordCounter('ethereum_rpc_rate_limited_total', 1, { method: metricMethod(method) });
+                }
 
                 const isLastAttempt =
                     attempt >=
@@ -150,6 +160,8 @@ export class EthereumRpcClient {
                 ) {
                     throw error;
                 }
+
+                recordCounter('ethereum_rpc_retries_total', 1, { method: metricMethod(method) });
 
                 const retryDelay =
                     this.calculateRetryDelay(
@@ -186,7 +198,30 @@ export class EthereumRpcClient {
     private async executeRequest<T>(
         method: string,
         params: unknown[],
+        attempt: number,
     ): Promise<T> {
+        return withSpan('ethereum.rpc', {
+            'rpc.method': metricMethod(method), 'rpc.system.name': 'ethereum',
+            'ethereum.chain_id': this.telemetryChainId,
+            'retry.attempt': attempt,
+            'ethereum.block_number': method === 'eth_getBlockByNumber' && typeof params[0] === 'string' ? params[0] : undefined,
+        }, async (span) => {
+            const started = performance.now();
+            const attributes = { method: metricMethod(method) };
+            recordCounter('ethereum_rpc_requests_total', 1, attributes);
+            try {
+                const result = await this.executeHttpRequest<T>(method, params);
+                span.setAttribute('rpc.status', 'success');
+                return result;
+            } catch (error) {
+                recordCounter('ethereum_rpc_errors_total', 1, attributes);
+                span.setAttribute('rpc.status', error instanceof RpcHttpError ? 'http_error' : error instanceof RpcTimeoutError ? 'timeout' : error instanceof JsonRpcError ? 'rpc_error' : 'network_error');
+                throw error;
+            } finally { recordHistogram('ethereum_rpc_duration_seconds', (performance.now() - started) / 1_000, attributes); }
+        }, { kind: SpanKind.CLIENT });
+    }
+
+    private async executeHttpRequest<T>(method: string, params: unknown[]): Promise<T> {
         const id =
             this.requestId++;
 
@@ -492,11 +527,13 @@ export class EthereumRpcClient {
                 'eth_chainId',
             );
 
-        return Number(
+        const chainId = Number(
             hexToBigInt(
                 result,
             ),
         );
+        this.telemetryChainId = chainId;
+        return chainId;
     }
 
     async getBlockNumber():

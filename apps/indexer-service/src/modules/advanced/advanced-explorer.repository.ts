@@ -15,9 +15,11 @@ import {
   transactions,
   transactionTraceRequests,
   transactionTraces,
+  outboxEvents,
 } from '../../database/schema/index.js';
 import type { VerificationLookup } from './etherscan.client.js';
 import type { AdvancedConfig } from './advanced.config.js';
+import { recordCounter } from '@blockchain-explorer/observability';
 
 export type ExplorerTransaction = NodePgTransaction<
   typeof schema,
@@ -29,6 +31,19 @@ export type TraceRequestRow = typeof transactionTraceRequests.$inferSelect;
 @Injectable()
 export class AdvancedExplorerRepository {
   constructor(private readonly database: DatabaseService) {}
+
+  async blockTraceContext(blockNumber: bigint, blockHash: string): Promise<unknown> {
+    // Reuse the durable block envelope instead of adding telemetry columns to business tables.
+    // Older envelopes have no metadata and intentionally start an independent background trace.
+    const [row] = await this.database.db.select({ payload: outboxEvents.payload }).from(outboxEvents)
+      .where(and(eq(outboxEvents.eventType, 'block.indexed.v1'), eq(outboxEvents.aggregateId, blockNumber.toString()),
+        sql`${outboxEvents.payload}->'payload'->>'blockHash' = ${blockHash}`))
+      .orderBy(desc(outboxEvents.createdAt)).limit(1);
+    const payload = row?.payload;
+    if (typeof payload !== 'object' || payload === null || !('metadata' in payload)) return undefined;
+    const metadata = payload.metadata;
+    return typeof metadata === 'object' && metadata !== null && 'traceContext' in metadata ? metadata.traceContext : undefined;
+  }
 
   async getAddress(
     address: string,
@@ -120,7 +135,8 @@ export class AdvancedExplorerRepository {
     blockHash: string,
     candidates: string[],
     config: AdvancedConfig,
-  ): Promise<void> {
+  ): Promise<number> {
+    let discoveries = 0;
     if (candidates.length) {
       await tx
         .update(addresses)
@@ -145,7 +161,7 @@ export class AdvancedExplorerRepository {
         ),
       );
     if (known.length) {
-      await tx
+      const inserted = await tx
         .insert(contractVerifications)
         .values(
           known.map((row): typeof contractVerifications.$inferInsert => ({
@@ -157,15 +173,18 @@ export class AdvancedExplorerRepository {
             nextAttemptAt: config.verificationEnabled ? new Date() : null,
           })),
         )
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ address: contractVerifications.contractAddress });
+      discoveries = inserted.length;
     }
-    if (!config.traceEnabled) return;
+    if (!config.traceEnabled) return discoveries;
     await this.insertTraceIntents(
       tx,
       blockNumber,
       blockHash,
       config.traceOnlyContracts,
     );
+    return discoveries;
   }
 
   private async insertTraceIntents(
@@ -234,13 +253,13 @@ export class AdvancedExplorerRepository {
     isContract: boolean,
     config: AdvancedConfig,
   ): Promise<void> {
-    await this.database.db.transaction(async (tx) => {
+    const discovered = await this.database.db.transaction(async (tx) => {
       const [canonical] = await tx
         .select({ hash: blocks.hash })
         .from(blocks)
         .where(eq(blocks.number, checkedBlock))
         .limit(1);
-      if (!canonical) return;
+      if (!canonical) return false;
       const rows = await tx
         .update(addresses)
         .set({
@@ -254,7 +273,7 @@ export class AdvancedExplorerRepository {
           and(eq(addresses.address, address), eq(addresses.isContract, false)),
         )
         .returning();
-      if (!isContract || !rows.length) return;
+      if (!isContract || !rows.length) return false;
       await tx
         .insert(contractVerifications)
         .values({
@@ -288,7 +307,9 @@ export class AdvancedExplorerRepository {
             )
             .onConflictDoNothing();
       }
+      return true;
     });
+    if (discovered) recordCounter('indexer_contracts_discovered_total');
   }
   async failDetection(address: string): Promise<void> {
     await this.database.db
@@ -372,7 +393,7 @@ export class AdvancedExplorerRepository {
     blockHash: string | null = null,
   ): Promise<void> {
     const { verified, ...stored } = result;
-    await this.database.db
+    const rows = await this.database.db
       .update(contractVerifications)
       .set({
         ...stored,
@@ -393,7 +414,11 @@ export class AdvancedExplorerRepository {
             : eq(contractVerifications.discoveredBlockHash, blockHash),
           eq(contractVerifications.attempts, attempts),
         ),
-      );
+      )
+      .returning({ address: contractVerifications.contractAddress });
+    if (rows.length && (result.status === 'verified' || result.status === 'unverified')) {
+      recordCounter('indexer_contract_verification_total', rows.length, { status: result.status });
+    }
   }
   async failVerification(
     address: string,
@@ -402,7 +427,7 @@ export class AdvancedExplorerRepository {
     config: AdvancedConfig,
     blockHash: string | null = null,
   ): Promise<void> {
-    await this.database.db
+    const rows = await this.database.db
       .update(contractVerifications)
       .set({
         status: 'failed',
@@ -421,7 +446,9 @@ export class AdvancedExplorerRepository {
             : eq(contractVerifications.discoveredBlockHash, blockHash),
           eq(contractVerifications.attempts, attempts),
         ),
-      );
+      )
+      .returning({ address: contractVerifications.contractAddress });
+    if (rows.length) recordCounter('indexer_contract_verification_total', rows.length, { status: 'failed' });
   }
 
   async requestTrace(hash: string, config: AdvancedConfig): Promise<void> {
@@ -493,7 +520,7 @@ export class AdvancedExplorerRepository {
     request: TraceRequestRow,
     traces: TransactionTraceEntry[],
   ): Promise<void> {
-    await this.database.db.transaction(async (tx) => {
+    const completed = await this.database.db.transaction(async (tx) => {
       const [current] = await tx
         .select()
         .from(transactionTraceRequests)
@@ -512,7 +539,7 @@ export class AdvancedExplorerRepository {
         current.attempts !== request.attempts ||
         current.status !== 'processing'
       )
-        return;
+        return false;
       await tx
         .delete(transactionTraces)
         .where(eq(transactionTraces.transactionHash, request.transactionHash));
@@ -544,14 +571,16 @@ export class AdvancedExplorerRepository {
         .where(
           eq(transactionTraceRequests.transactionHash, request.transactionHash),
         );
+      return true;
     });
+    if (completed) recordCounter('indexer_traces_total', 1, { status: 'completed' });
   }
   async failTrace(
     request: TraceRequestRow,
     unsupported: boolean,
     maximumAttempts: number,
   ): Promise<void> {
-    await this.database.db
+    const rows = await this.database.db
       .update(transactionTraceRequests)
       .set({
         status: unsupported
@@ -573,6 +602,10 @@ export class AdvancedExplorerRepository {
           eq(transactionTraceRequests.blockHash, request.blockHash),
           eq(transactionTraceRequests.attempts, request.attempts),
         ),
-      );
+      )
+      .returning({ status: transactionTraceRequests.status });
+    for (const row of rows) if (row.status === 'unsupported' || row.status === 'failed') {
+      recordCounter('indexer_traces_total', 1, { status: row.status });
+    }
   }
 }

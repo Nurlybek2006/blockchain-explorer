@@ -10,6 +10,7 @@ import { DatabaseService } from '../../database/database.service.js';
 import { outboxEvents } from '../../database/schema/index.js';
 import { PortfolioJobsService } from '../jobs/portfolio-jobs.service.js';
 import { INITIAL_SYNC_EVENT_TYPE, isInitialPortfolioSyncPayload } from './portfolio-initial-sync.js';
+import { withTraceContext } from '@blockchain-explorer/observability';
 
 /** Publish committed initial-sync intents to BullMQ with retry after Redis outages. */
 @Injectable()
@@ -80,7 +81,11 @@ export class PortfolioInitialSyncDispatcher implements OnApplicationBootstrap, O
         try {
           // A transaction-held row lock excludes other service instances.
           // Deterministic BullMQ IDs cover crashes between enqueue and commit.
-          await this.jobs.enqueueInitialSync(intent.payload);
+          const payload = intent.payload;
+          const metadata = 'metadata' in payload ? payload.metadata : undefined;
+          const carrier = typeof metadata === 'object' && metadata !== null && 'traceContext' in metadata
+            ? metadata.traceContext : undefined;
+          await withTraceContext(carrier, () => this.jobs.enqueueInitialSync({ portfolioId: payload.portfolioId, chainId: payload.chainId }));
           await transaction.update(outboxEvents)
             .set({ status: 'published', publishedAt: new Date(), attempts: intent.attempts + 1 })
             .where(eq(outboxEvents.id, intent.id));

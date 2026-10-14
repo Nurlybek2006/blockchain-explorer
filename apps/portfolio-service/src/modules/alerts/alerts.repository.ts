@@ -5,6 +5,7 @@ import { DatabaseService } from '../../database/database.service.js';
 import { alertEvents, alerts } from '../../database/schema/index.js';
 import { FinanceDecimal } from '../../common/utils/decimal-math.js';
 import { crossingDecision, priceCondition, type AlertSettings } from './alert-evaluation.js';
+import { recordCounter } from '@blockchain-explorer/observability';
 
 export type AlertRecord = typeof alerts.$inferSelect;
 export type AlertEventRecord = typeof alertEvents.$inferSelect;
@@ -100,26 +101,29 @@ export class AlertsRepository {
   }
 
   /** Lock and revalidate the rule: concurrent edits cannot apply a stale threshold or owner. */
-  insertTransferEvent(id: string, eventKey: string, decide: (current: AlertRecord) => NewAlertEvent | null): Promise<boolean> {
-    return this.database.db.transaction(async (transaction) => {
+  async insertTransferEvent(id: string, eventKey: string, decide: (current: AlertRecord) => NewAlertEvent | null): Promise<boolean> {
+    const result = await this.database.db.transaction(async (transaction) => {
       const [current] = await transaction.select().from(alerts).where(eq(alerts.id, id)).for('update').limit(1);
-      if (!current) return false;
+      if (!current) return { inserted: false, type: 'other' };
       const event = decide(current);
-      if (!event) return false;
+      if (!event) return { inserted: false, type: 'other' };
       const inserted = await transaction.insert(alertEvents).values({ alertId: id, eventKey, ...event })
         .onConflictDoNothing({ target: [alertEvents.alertId, alertEvents.eventKey] }).returning({ id: alertEvents.id });
-      return inserted.length > 0;
+      return { inserted: inserted.length > 0, type: current.type };
     });
+    if (result.inserted) recordCounter('portfolio_alerts_triggered_total', 1, { alert_type: result.type });
+    return result.inserted;
   }
 
-  evaluatePrice(price: AssetPriceResponse): Promise<void> {
+  async evaluatePrice(price: AssetPriceResponse): Promise<void> {
     if (price.priceUsd === null || price.fetchedAt === null || price.availability !== 'available' || price.stale) {
-      return Promise.resolve();
+      return;
     }
     const fetchedAt = new Date(price.fetchedAt);
     if (!Number.isFinite(fetchedAt.getTime())) throw new Error('Invalid alert price timestamp');
     const priceUsd = price.priceUsd;
-    return this.database.db.transaction(async (transaction) => {
+    const triggered = await this.database.db.transaction(async (transaction) => {
+      const counts = { price_above: 0, price_below: 0 };
       const rules = await transaction.select().from(alerts).where(and(
         eq(alerts.enabled, true), inArray(alerts.type, ['price_above', 'price_below']),
         price.tokenAddress === null ? isNull(alerts.tokenAddress)
@@ -132,15 +136,20 @@ export class AlertsRepository {
         if (!decision.update) continue;
         await transaction.update(alerts).set({ lastConditionMet: condition, lastEvaluatedAt: fetchedAt }).where(eq(alerts.id, rule.id));
         if (decision.trigger) {
-          await transaction.insert(alertEvents).values({
+          const inserted = await transaction.insert(alertEvents).values({
             alertId: rule.id, eventKey: `price:${price.assetKey}:${fetchedAt.toISOString()}`,
             title: rule.type === 'price_above' ? 'Price rose above threshold' : 'Price fell below threshold',
             message: `${price.symbol ?? price.assetKey} price is ${priceUsd} USD; threshold ${rule.thresholdUsd} USD`,
             payload: { assetKey: price.assetKey, tokenAddress: price.tokenAddress, symbol: price.symbol,
               priceUsd, thresholdUsd: rule.thresholdUsd, priceFetchedAt: price.fetchedAt, type: rule.type },
-          }).onConflictDoNothing({ target: [alertEvents.alertId, alertEvents.eventKey] });
+          }).onConflictDoNothing({ target: [alertEvents.alertId, alertEvents.eventKey] }).returning({ id: alertEvents.id });
+          if (rule.type === 'price_above' || rule.type === 'price_below') counts[rule.type] += inserted.length;
         }
       }
+      return counts;
     });
+    for (const type of ['price_above', 'price_below'] as const) {
+      if (triggered[type] > 0) recordCounter('portfolio_alerts_triggered_total', triggered[type], { alert_type: type });
+    }
   }
 }

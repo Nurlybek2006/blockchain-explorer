@@ -20,6 +20,7 @@ import { PricesService } from '../prices/prices.service.js';
 import { isAlertType, transferMatches, transferUsdValue, type AlertSettings } from './alert-evaluation.js';
 import { AlertsRepository, type AlertEventRecord, type AlertRecord, type NewAlertEvent } from './alerts.repository.js';
 import { isPositiveUsdThreshold } from './dto/alert.dto.js';
+import { withSpan } from '@blockchain-explorer/observability';
 
 type Store = Pick<AlertsRepository,
   'create' | 'list' | 'findOwned' | 'updateOwned' | 'deleteOwned' | 'listEvents' | 'markReadOwned'
@@ -48,7 +49,7 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    this.unsubscribe = this.prices.subscribe((price) => this.repository.evaluatePrice(price));
+    this.unsubscribe = this.prices.subscribe((price) => withSpan('portfolio.alert_evaluation', { 'alert.source': 'price' }, () => this.repository.evaluatePrice(price)));
   }
 
   onModuleDestroy(): void {
@@ -111,6 +112,10 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async evaluateTransfer(event: TokenTransferIndexedEvent): Promise<void> {
+    return withSpan('portfolio.alert_evaluation', { 'alert.source': 'transfer' }, () => this.evaluateTransferRules(event));
+  }
+
+  private async evaluateTransferRules(event: TokenTransferIndexedEvent): Promise<void> {
     if (!isTokenTransferIndexedEvent(event)) throw new Error('Invalid token transfer alert event');
     if (event.payload.chainId !== this.chainId) return;
     const payload = event.payload;

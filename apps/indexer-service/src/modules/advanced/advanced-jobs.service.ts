@@ -5,6 +5,7 @@ import {
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withSpan, withTraceContext, recordSpanError, type Span } from '@blockchain-explorer/observability';
 import { EthereumRpcClient } from '@blockchain-explorer/blockchain-client';
 import {
   BullMqFactory,
@@ -207,6 +208,7 @@ export class AdvancedJobsService
   private async dispatchVerification(): Promise<void> {
     const queue = this.verificationQueue;
     if (!queue) return;
+    const contexts = new Map<string, unknown>();
     for (const row of await this.repository.dueVerifications(this.options)) {
       const data: VerificationJobData = {
         contractAddress: row.contractAddress,
@@ -217,12 +219,13 @@ export class AdvancedJobsService
         attempt: row.attempts,
       };
       // BullMQ custom IDs cannot contain colons. Attempt suffix enables bounded delayed rechecks.
-      await deadline(
+      const carrier = await this.durableBlockContext(contexts, row.discoveredBlock, row.discoveredBlockHash);
+      await withTraceContext(carrier, () => deadline(
         queue.add('verify-contract', data, {
           jobId: `verify-${row.contractAddress}-${row.discoveredBlockHash ?? 'legacy'}-${row.attempts}`,
         }),
         2500,
-      );
+      ));
       await this.repository.deferVerification(
         row.contractAddress,
         row.attempts,
@@ -233,6 +236,7 @@ export class AdvancedJobsService
   private async dispatchTraces(): Promise<void> {
     const queue = this.traceQueue;
     if (!queue) return;
+    const contexts = new Map<string, unknown>();
     for (const row of await this.repository.dueTraces()) {
       if (row.attempts > this.options.traceMaxRetries) {
         await this.repository.failTrace(
@@ -248,6 +252,7 @@ export class AdvancedJobsService
         blockHash: row.blockHash,
       };
       const id = `trace-${row.transactionHash}-${row.blockHash}`;
+      const carrier = await this.durableBlockContext(contexts, row.blockNumber, row.blockHash);
       const existing = await deadline(queue.getJob(id), 2500);
       if (existing) {
         const state = await existing.getState();
@@ -257,22 +262,31 @@ export class AdvancedJobsService
           (row.status === 'queued' || row.status === 'processing')
         ) {
           await existing.remove();
-          await deadline(
+          await withTraceContext(carrier, () => deadline(
             queue.add('trace-transaction', data, { jobId: id }),
             2500,
-          );
+          ));
         }
       } else
-        await deadline(
+        await withTraceContext(carrier, () => deadline(
           queue.add('trace-transaction', data, { jobId: id }),
           2500,
-        );
+        ));
       await this.repository.deferTrace(
         row.transactionHash,
         row.attempts,
         new Date(Date.now() + 120000),
       );
     }
+  }
+  private async durableBlockContext(cache: Map<string, unknown>, height: bigint | null, hash: string | null): Promise<unknown> {
+    if (height === null || hash === null) return undefined;
+    if (cache.has(hash)) return cache.get(hash);
+    let carrier: unknown;
+    try { carrier = await deadline(this.repository.blockTraceContext(height, hash), 1000); }
+    catch { /* A telemetry metadata lookup never prevents dispatching a durable business intent. */ }
+    cache.set(hash, carrier);
+    return carrier;
   }
   async verify(
     job: Job<VerificationJobData, void, 'verify-contract'>,
@@ -282,6 +296,10 @@ export class AdvancedJobsService
     return this.processVerification(job.data);
   }
   async processVerification(data: VerificationJobData): Promise<void> {
+    return withSpan('indexer.verify_contract', { 'ethereum.block_number': data.blockNumber },
+      (span) => this.processVerificationOperation(data, span));
+  }
+  private async processVerificationOperation(data: VerificationJobData, span: Span): Promise<void> {
     if (!verificationData(data))
       throw new Error('Invalid verification payload');
     const row = await this.repository.claimVerification(
@@ -299,6 +317,7 @@ export class AdvancedJobsService
         row.discoveredBlockHash,
       );
     } catch (error) {
+      recordSpanError(span, error);
       await this.repository.failVerification(
         row.contractAddress,
         row.attempts,
@@ -318,6 +337,10 @@ export class AdvancedJobsService
     return this.processTrace(job.data);
   }
   async processTrace(data: TraceJobData): Promise<void> {
+    return withSpan('indexer.trace_transaction', { 'ethereum.block_number': data.blockNumber },
+      (span) => this.processTraceOperation(data, span));
+  }
+  private async processTraceOperation(data: TraceJobData, span: Span): Promise<void> {
     if (!traceData(data)) throw new Error('Invalid trace payload');
     const row = await this.repository.claimTrace(
       data.transactionHash.toLowerCase(),
@@ -361,6 +384,7 @@ export class AdvancedJobsService
         normalizeCallTrace(payload, row.transactionHash, row.blockNumber),
       );
     } catch (error) {
+      recordSpanError(span, error);
       const unsupported = isUnsupportedTraceError(error);
       if (unsupported) this.traceUnsupported = true;
       await this.repository.failTrace(

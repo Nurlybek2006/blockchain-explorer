@@ -39,6 +39,7 @@ import {
   createEventEnvelope,
   EVENT_TYPES,
 } from '@blockchain-explorer/contracts';
+import { injectTraceContext, recordCounter, withSpan } from '@blockchain-explorer/observability';
 
 @Injectable()
 export class ReorgService {
@@ -122,6 +123,11 @@ export class ReorgService {
       return false;
     }
 
+    return withSpan('indexer.reorg', { 'ethereum.chain_id': chainId, 'ethereum.block_number': blockNumber.toString() },
+      () => this.rewind(chainId, blockNumber, previousNumber));
+  }
+
+  private async rewind(chainId: number, blockNumber: bigint, previousNumber: bigint): Promise<boolean> {
     this.logger.warn(
       `Blockchain reorg detected near block ${blockNumber}`,
     );
@@ -315,8 +321,10 @@ export class ReorgService {
             aggregateId:
               String(chainId),
 
-            payload:
-              reorgEvent,
+            payload: {
+              ...reorgEvent,
+              metadata: { traceContext: injectTraceContext() },
+            },
 
             status:
               'pending',
@@ -332,6 +340,8 @@ export class ReorgService {
           });
       },
     );
+
+    recordCounter('indexer_reorgs_total');
 
     this.logger.warn(
       `Indexer rewound to common ancestor ${commonAncestor}`,

@@ -4,6 +4,7 @@ import {
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from '@nestjs/common';
+import { recordGauge } from '@blockchain-explorer/observability';
 
 import {
   sleep,
@@ -45,6 +46,7 @@ export class BlockScannerWorker
 
   onApplicationBootstrap():
     void {
+    recordGauge('indexer_running', this.config.enabled ? 1 : 0);
     if (
       !this.config.enabled
     ) {
@@ -73,6 +75,7 @@ export class BlockScannerWorker
     ) {
       await this.loopPromise;
     }
+    recordGauge('indexer_running', 0);
 
     this.logger.log(
       'Block scanner stopped',

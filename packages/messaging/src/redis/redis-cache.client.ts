@@ -2,6 +2,8 @@
 import {
   createClient,
 } from 'redis';
+import { recordCounter, recordHistogram, SpanKind, withSpan } from '@blockchain-explorer/observability';
+import { cacheMetricNamespace } from '../telemetry.js';
 
 export interface RedisCacheClientOptions {
   url: string;
@@ -59,6 +61,7 @@ export class RedisCacheClient {
   async getJson<T>(
     key: string,
   ): Promise<T | null> {
+    return this.measure('get', key, async () => {
     await this.connect();
 
     const value =
@@ -70,12 +73,16 @@ export class RedisCacheClient {
         );
 
     if (!value) {
+      recordCounter('cache_misses_total', 1, { namespace: cacheMetricNamespace(key) });
       return null;
     }
 
-    return JSON.parse(
+    const parsed = JSON.parse(
       value,
     ) as T;
+    recordCounter('cache_hits_total', 1, { namespace: cacheMetricNamespace(key) });
+    return parsed;
+    });
   }
 
   async setJson(
@@ -83,6 +90,7 @@ export class RedisCacheClient {
     value: unknown,
     ttlSeconds: number,
   ): Promise<void> {
+    await this.measure('set', key, async () => {
     await this.connect();
 
     await this.client
@@ -100,11 +108,13 @@ export class RedisCacheClient {
             ttlSeconds,
         },
       );
+    });
   }
 
   async delete(
     key: string,
   ): Promise<void> {
+    await this.measure('delete', key, async () => {
     await this.connect();
 
     await this.client
@@ -113,6 +123,7 @@ export class RedisCacheClient {
           key,
         ),
       );
+    });
   }
 
   async close():
@@ -134,11 +145,24 @@ export class RedisCacheClient {
     if (!prefix || /[\[\]*?\\]/.test(prefix)) {
       throw new Error('Cache prefix must be a non-empty literal');
     }
+    await this.measure('delete_prefix', prefix, async () => {
     await this.connect();
     const literalNamespace = this.key(prefix).replace(/[\\*?\[\]]/g, '\\$&');
     for await (const keys of this.client.scanIterator({ MATCH: `${literalNamespace}*`, COUNT: 100 })) {
       if (keys.length > 0) await this.client.unlink(keys);
     }
+    });
+  }
+
+  private async measure<T>(operation: 'get' | 'set' | 'delete' | 'delete_prefix', key: string, work: () => Promise<T>): Promise<T> {
+    const attributes = { namespace: cacheMetricNamespace(key), operation };
+    recordCounter('cache_requests_total', 1, attributes);
+    return withSpan('redis.cache', { 'db.system.name': 'redis', 'db.operation.name': operation, 'cache.namespace': attributes.namespace }, async () => {
+      const started = performance.now();
+      try { return await work(); }
+      catch (error) { recordCounter('cache_errors_total', 1, attributes); throw error; }
+      finally { recordHistogram('cache_operation_duration_seconds', (performance.now() - started) / 1_000, attributes); }
+    }, { kind: SpanKind.CLIENT });
   }
 
   private key(

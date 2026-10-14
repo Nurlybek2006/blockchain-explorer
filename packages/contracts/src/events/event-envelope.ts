@@ -2,6 +2,13 @@ import {
   randomUUID,
 } from 'node:crypto';
 
+/** Persisted outbox metadata; browser-facing event mappers omit this field. */
+export interface EventTraceContext {
+  traceparent?: string;
+  tracestate?: string;
+  'x-request-id'?: string;
+}
+
 export interface EventEnvelope<
   TType extends string = string,
   TPayload = unknown,
@@ -17,6 +24,8 @@ export interface EventEnvelope<
   occurredAt: string;
 
   payload: TPayload;
+
+  metadata?: { traceContext?: EventTraceContext };
 }
 
 export function createEventEnvelope<

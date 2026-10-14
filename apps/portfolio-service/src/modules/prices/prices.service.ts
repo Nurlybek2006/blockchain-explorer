@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, type OnApplicationShutdown, type OnModuleDestroy } from '@nestjs/common';
+import { recordCounter, withSpan, recordSpanError, type Span } from '@blockchain-explorer/observability';
 import { ConfigService } from '@nestjs/config';
 import { normalizeAssetKey, type AssetPriceResponse } from '@blockchain-explorer/contracts';
 import { CoinGeckoClient } from './coingecko.client.js';
@@ -122,12 +123,18 @@ export class PricesService implements OnModuleDestroy, OnApplicationShutdown {
   }
 
   private async refresh(assetKey: string): Promise<AssetPriceResponse> {
+    return withSpan('portfolio.price_refresh', {}, (span) => this.refreshPrice(assetKey, span));
+  }
+
+  private async refreshPrice(assetKey: string, span: Span): Promise<AssetPriceResponse> {
     const stored = await this.repository.find(assetKey);
     const observedAt = new Date();
     let fetched;
     try {
       fetched = await this.provider.fetchPrice(assetKey);
     } catch (error) {
+      recordSpanError(span, error);
+      recordCounter('portfolio_price_refresh_errors_total');
       if (this.stopping) throw error;
       this.logger.warn(`Price provider is unavailable for ${assetKey}: ${error instanceof Error ? error.name : 'provider error'}`);
       const fallback = stored ? { ...serializePrice(stored, this.options.staleAfterSeconds), stale: true } : unavailablePrice(assetKey);
@@ -137,6 +144,7 @@ export class PricesService implements OnModuleDestroy, OnApplicationShutdown {
     if (this.stopping) throw new Error('Price service is closing');
     if (!fetched) {
       const remaining = await this.repository.markUnavailable(assetKey, observedAt, stored);
+      recordCounter('portfolio_price_refresh_total', 1, { status: 'unavailable' });
       const unavailable = remaining ? serializePrice(remaining, this.options.staleAfterSeconds) : unavailablePrice(assetKey);
       await this.cache.set(unavailable);
       return unavailable;
@@ -153,6 +161,8 @@ export class PricesService implements OnModuleDestroy, OnApplicationShutdown {
       coinGeckoId: assetKey === 'native:eth' ? 'ethereum' : stored?.coinGeckoId ?? null,
       symbol,
     });
+    // Count the committed price even if a later alert subscriber retries its own transaction.
+    recordCounter('portfolio_price_refresh_total', 1, { status: 'success' });
     const response = serializePrice(saved, this.options.staleAfterSeconds);
     await this.cache.set(response);
     if (!response.stale) {

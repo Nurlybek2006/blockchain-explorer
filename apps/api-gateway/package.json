@@ -13,7 +13,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/main.js",
     "lint": "oxlint --type-aware src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,7 +41,8 @@
     "rxjs": "^7.8.1",
     "@nestjs/websockets": "12.1.2",
     "@nestjs/platform-ws": "12.1.2",
-    "ws": "^8.22.0"
+    "ws": "^8.22.0",
+    "@blockchain-explorer/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

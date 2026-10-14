@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { recordCounter, recordGauge, recordHistogram, withSpan } from '@blockchain-explorer/observability';
 import type {
   PortfolioAnalyticsResponse, PortfolioHistoryRange, PortfolioHistoryResponse, PortfolioValuationResponse,
 } from '@blockchain-explorer/contracts';
@@ -58,6 +59,10 @@ export class AnalyticsService {
   }
 
   async snapshotPortfolio(portfolioId: string): Promise<void> {
+    return withSpan('portfolio.snapshot', {}, () => this.createSnapshot(portfolioId));
+  }
+
+  private async createSnapshot(portfolioId: string): Promise<void> {
     const state = await this.repository.activeState(portfolioId);
     if (!state) return;
     if (!hasObservedNativeBalance(state)) {
@@ -87,10 +92,11 @@ export class AnalyticsService {
     }
     const recordedAt = new Date();
     const start = Math.floor(recordedAt.getTime() / this.snapshotIntervalMs) * this.snapshotIntervalMs;
-    await this.repository.insertSnapshotIfAbsent({
+    const inserted = await this.repository.insertSnapshotIfAbsent({
       portfolioId, totalValueUsd: toMoney(total, 2), totalValueEth: ethValue === null ? null : toMoney(ethValue),
       recordedAt, bucketStart: new Date(start), bucketEnd: new Date(start + this.snapshotIntervalMs),
     });
+    if (inserted) recordCounter('portfolio_snapshots_total');
   }
 
   async refreshPortfolioValuations(): Promise<void> {
@@ -115,6 +121,23 @@ export class AnalyticsService {
   }
 
   private async valueState(state: PortfolioState): Promise<PortfolioValuationResponse> {
+    return withSpan('portfolio.valuation', {}, async () => {
+      const started = performance.now();
+      let status = 'error';
+      try {
+        const result = await this.calculateValuation(state);
+        recordCounter('portfolio_valuations_total');
+        // Latest successful observation across requests; no per-user or portfolio labels are retained.
+        recordGauge('portfolio_unpriced_assets', result.summary.unpricedAssetCount);
+        status = 'success';
+        return result;
+      } finally {
+        recordHistogram('portfolio_valuation_duration_seconds', (performance.now() - started) / 1000, { status });
+      }
+    });
+  }
+
+  private async calculateValuation(state: PortfolioState): Promise<PortfolioValuationResponse> {
     const keys = [...new Set(state.holdings.map((holding) => holding.assetKey))];
     const prices = await this.prices.getPrices(keys);
     const valuation = buildValuation(state, new Map(prices.map((price) => [price.assetKey, price])));

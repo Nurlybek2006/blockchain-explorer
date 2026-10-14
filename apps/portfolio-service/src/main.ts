@@ -1,17 +1,5 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { AppModule } from './app.module.js';
+import { telemetry } from './instrumentation.js';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.enableShutdownHooks();
-  app.useGlobalPipes(new ValidationPipe({
-    transform: true,
-    whitelist: true,
-    forbidNonWhitelisted: true,
-  }));
-  const config = app.get(ConfigService);
-  await app.listen(Number(config.get('PORTFOLIO_PORT') ?? 3002), '0.0.0.0');
-}
-await bootstrap();
+// Dynamic import ensures the SDK and ESM hooks precede Nest/pg/HTTP loading.
+const { bootstrap } = await import('./bootstrap.js');
+await bootstrap(telemetry);

@@ -5,6 +5,7 @@ import { holdings, outboxEvents, portfolios } from '../../database/schema/index.
 import { isUniqueViolation } from '../../common/utils/postgres-error.js';
 import { activeOwnedPortfolio } from './portfolio-ownership.js';
 import { INITIAL_SYNC_EVENT_TYPE } from './portfolio-initial-sync.js';
+import { injectTraceContext } from '@blockchain-explorer/observability';
 
 export type PortfolioRecord = typeof portfolios.$inferSelect;
 export type HoldingRecord = typeof holdings.$inferSelect;
@@ -58,7 +59,7 @@ export class PortfoliosRepository {
           eventType: INITIAL_SYNC_EVENT_TYPE,
           aggregateType: 'portfolio',
           aggregateId: portfolio.id,
-          payload: { portfolioId: portfolio.id, chainId: portfolio.chainId },
+          payload: { portfolioId: portfolio.id, chainId: portfolio.chainId, metadata: { traceContext: injectTraceContext() } },
         });
         return portfolio;
       });

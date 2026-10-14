@@ -6,6 +6,7 @@ import {
 import {
   EthereumRpcClient,
 } from '@blockchain-explorer/blockchain-client';
+import { withSpan, recordCounter } from '@blockchain-explorer/observability';
 
 import {
   IndexerConfigService,
@@ -150,6 +151,13 @@ export class ChainSyncService {
 
   async syncNextBatch():
     Promise<boolean> {
+    return withSpan('indexer.scan_batch', {}, async () => {
+      try { return await this.scanNextBatch(); }
+      catch (error) { recordCounter('indexer_processing_errors_total'); throw error; }
+    });
+  }
+
+  private async scanNextBatch(): Promise<boolean> {
     await this.initialize();
 
     const latestBlock =

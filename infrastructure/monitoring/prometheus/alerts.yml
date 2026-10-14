@@ -1,0 +1,82 @@
+groups:
+  - name: blockchain-explorer
+    rules:
+      - alert: TelemetryServiceMissing
+        expr: absent(service_up{service_name="blockchain-explorer-api"}) or absent(service_up{service_name="blockchain-explorer-indexer"}) or absent(service_up{service_name="blockchain-explorer-portfolio"})
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Service telemetry is missing
+          description: "{{ $labels.service_name }} has not exported a heartbeat. Check service health and the telemetry pipeline separately."
+      - alert: IndexerLagHigh
+        expr: indexer_lag_blocks{service_name="blockchain-explorer-indexer"} > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Indexer is more than 50 blocks behind RPC
+      - alert: IndexerStopped
+        expr: indexer_running{service_name="blockchain-explorer-indexer"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Indexer scanner is stopped or disabled
+      - alert: EthereumRpcErrorRateHigh
+        expr: sum by (service_name) (rate(ethereum_rpc_errors_total[5m])) / clamp_min(sum by (service_name) (rate(ethereum_rpc_requests_total[5m])), 0.001) > 0.2 and sum by (service_name) (increase(ethereum_rpc_requests_total[5m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ethereum RPC error rate exceeds 20 percent
+      - alert: EthereumRpcRateLimited
+        expr: sum by (service_name) (increase(ethereum_rpc_rate_limited_total[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ethereum RPC repeatedly rate limits requests
+      - alert: ServiceHttp5xxHigh
+        expr: sum by (service_name) (rate(http_server_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum by (service_name) (rate(http_server_requests_total[5m])), 0.001) > 0.05 and sum by (service_name) (increase(http_server_requests_total[5m])) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: HTTP server error rate exceeds 5 percent
+      - alert: OutboxBacklogHigh
+        expr: indexer_outbox_backlog{service_name="blockchain-explorer-indexer"} > 1000 or indexer_outbox_oldest_pending_age_seconds{service_name="blockchain-explorer-indexer"} > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Transactional outbox delivery is delayed
+      - alert: BullMqJobFailuresHigh
+        expr: sum by (service_name, queue) (increase(bullmq_jobs_failed_total[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: BullMQ jobs repeatedly fail
+      - alert: PortfolioPriceRefreshFailures
+        expr: sum by (service_name) (increase(portfolio_price_refresh_errors_total[5m])) >= 3
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Portfolio price refresh repeatedly fails
+      - alert: WebSocketDisconnectSpike
+        expr: sum by (service_name) (increase(websocket_disconnects_total[5m])) > 20 and sum by (service_name) (increase(websocket_disconnects_total[5m])) / clamp_min(sum by (service_name) (increase(websocket_connections_total[5m])), 1) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket connection churn is high
+          description: More than 20 disconnects and over 80 percent of new connections disconnect in a five minute interval. Reconnect storms and planned restarts both affect this signal.
+      - alert: ObservabilityScrapeFailed
+        expr: up{job=~"applications|otel-collector|rabbitmq-broker|tempo|loki"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Prometheus cannot scrape a telemetry target

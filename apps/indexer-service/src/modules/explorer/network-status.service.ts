@@ -6,6 +6,13 @@ import { desc } from 'drizzle-orm';
 import { DatabaseService } from '../../database/database.service.js';
 import { blocks } from '../../database/schema/index.js';
 import { calculateNetworkLag } from './network-status.js';
+import { recordGauge } from '@blockchain-explorer/observability';
+
+function metricHeight(value: string | null): number | null {
+  if (value === null) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
 
 @Injectable()
 export class NetworkStatusService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -33,6 +40,7 @@ export class NetworkStatusService implements OnApplicationBootstrap, OnApplicati
       maxConcurrentRequests: 1, requestsPerSecond: 1, userAgent: 'blockchain-explorer-network-status/1.0' });
     this.snapshot = { chainId: this.chainId, networkName: this.chainId === 11155111 ? 'ethereum-sepolia' : this.chainId === 1 ? 'ethereum-mainnet' : `ethereum-${this.chainId}`,
       rpcLatestBlock: null, indexedBlock: null, lag: null, status: 'starting', updatedAt: new Date().toISOString() };
+    this.observeSnapshot();
   }
   getStatus(): NetworkStatusResponse { return { ...this.snapshot }; }
   onApplicationBootstrap(): void { this.run(); }
@@ -59,7 +67,15 @@ export class NetworkStatusService implements OnApplicationBootstrap, OnApplicati
     } catch {
       this.snapshot = { ...this.snapshot, rpcLatestBlock: null, lag: null, status: 'degraded', updatedAt: new Date().toISOString() };
       this.logger.warn('Network status probe unavailable');
+    } finally {
+      this.observeSnapshot();
     }
+  }
+  private observeSnapshot(): void {
+    // Unknown observations remove the datapoint; provider failure must not leave a stale healthy lag.
+    recordGauge('indexer_latest_indexed_block', metricHeight(this.snapshot.indexedBlock));
+    recordGauge('indexer_rpc_latest_block', metricHeight(this.snapshot.rpcLatestBlock));
+    recordGauge('indexer_lag_blocks', metricHeight(this.snapshot.lag));
   }
   async onApplicationShutdown(): Promise<void> { this.stopping = true; if (this.timer) clearTimeout(this.timer); this.rpc.close(); await this.pending; }
 }

@@ -3,6 +3,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { injectTraceContext, recordCounter, recordHistogram, withSpan } from '@blockchain-explorer/observability';
 import { AdvancedExplorerRepository } from '../advanced/advanced-explorer.repository.js';
 import { loadAdvancedConfig, type AdvancedConfig } from '../advanced/advanced.config.js';
 
@@ -89,6 +90,27 @@ export class BlockProcessorService {
 
   async process(
     chainId: number,
+    networkName: string,
+    block: RpcBlock<RpcTransaction>,
+    confirmedHead: bigint,
+  ): Promise<void> {
+    return withSpan('indexer.process_block', {
+      'ethereum.chain_id': chainId,
+      'ethereum.block_number': block.number === null ? undefined : hexToBigInt(block.number).toString(),
+    }, async () => {
+      const started = performance.now();
+      let status = 'error';
+      try {
+        await this.processBlock(chainId, networkName, block, confirmedHead);
+        status = 'success';
+      } finally {
+        recordHistogram('indexer_block_processing_duration_seconds', (performance.now() - started) / 1000, { status });
+      }
+    });
+  }
+
+  private async processBlock(
+    chainId: number,
 
     networkName: string,
 
@@ -129,13 +151,13 @@ export class BlockProcessorService {
      * ашпай тұрып орындаймыз.
      */
     const rpcReceipts =
-      await this.rpc
+      await withSpan('indexer.fetch_receipts', { 'ethereum.chain_id': chainId, 'ethereum.block_number': blockNumber.toString() }, () => this.rpc
         .getTransactionReceipts(
           transactionHashes,
 
           this.config
             .receiptConcurrency,
-        );
+        ));
 
     const receipts:
       RpcTransactionReceipt[] =
@@ -159,11 +181,11 @@ export class BlockProcessorService {
      * token metadata discovery.
      */
     const tokenData =
-      await this.tokenIndexer
+      await withSpan('indexer.parse_erc20', { 'ethereum.chain_id': chainId, 'ethereum.block_number': blockNumber.toString() }, () => this.tokenIndexer
         .prepare(
           receipts,
           blockNumber,
-        );
+        ));
 
     /*
      * Block ішінде кездескен
@@ -503,12 +525,14 @@ export class BlockProcessorService {
           tokenData.tokens,
         );
 
+    const carrier = injectTraceContext();
     const events = [
       blockEvent,
       ...transferEvents,
-    ];
+    ].map((event) => Object.keys(carrier).length ? { ...event, metadata: { traceContext: carrier } } : event);
 
-    await this.database.db
+    let discoveredContracts = 0;
+    await withSpan('indexer.persist_block', { 'ethereum.chain_id': chainId, 'ethereum.block_number': blockNumber.toString() }, () => this.database.db
       .transaction(
         async (tx) => {
           /*
@@ -777,7 +801,7 @@ export class BlockProcessorService {
           }
 
           // Persist enrichment intents atomically with canonical data. Providers and Redis stay outside ingestion.
-          await this.advancedRepository.recordBlockIntents(tx, blockNumber, blockHash, contractCandidates, this.advancedOptions);
+          discoveredContracts = await this.advancedRepository.recordBlockIntents(tx, blockNumber, blockHash, contractCandidates, this.advancedOptions);
 
           /*
            * INDEXER STATE
@@ -945,7 +969,14 @@ export class BlockProcessorService {
               });
           }
         },
-      );
+      ));
+
+    // These observations represent a committed canonical block, never a rolled-back attempt.
+    recordCounter('indexer_blocks_processed_total');
+    recordCounter('indexer_transactions_processed_total', transactionRows.length);
+    recordCounter('indexer_logs_processed_total', logRows.length);
+    recordCounter('indexer_token_transfers_processed_total', tokenData.transfers.length);
+    if (discoveredContracts > 0) recordCounter('indexer_contracts_discovered_total', discoveredContracts);
 
     this.logger.log(
       [

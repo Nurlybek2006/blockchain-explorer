@@ -1,5 +1,6 @@
 import { BadGatewayException, BadRequestException, ConflictException, HttpException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { propagationHeaders } from '@blockchain-explorer/observability';
 
 /** Shared transport for the Portfolio Service's internal APIs. */
 export class PortfolioHttpClient {
@@ -26,6 +27,7 @@ export class PortfolioHttpClient {
       const response = await fetch(url, {
         method,
         headers: {
+          ...propagationHeaders(),
           'x-internal-service-token': this.token,
           accept: 'application/json',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),

@@ -4,6 +4,8 @@ import {
   type JobsOptions,
   type Processor,
 } from 'bullmq';
+import { injectTraceContext, recordCounter, recordGauge, recordHistogram, SpanKind, withSpan, withTraceContext } from '@blockchain-explorer/observability';
+import { parseJobTraceContext, queueMetricName } from '../telemetry.js';
 
 export interface BullMqFactoryOptions {
   redisUrl: string;
@@ -32,7 +34,7 @@ export class BullMqFactory {
     defaultJobOptions:
       JobsOptions = {},
   ): Queue<TData, TResult, TName> {
-    return new Queue<TData, TResult, TName>(
+    const queue = new Queue<TData, TResult, TName>(
       name,
       {
         connection:
@@ -73,6 +75,48 @@ export class BullMqFactory {
         },
       },
     );
+    const metricQueue = queueMetricName(name);
+    const add = queue.add.bind(queue);
+    queue.add = (jobName, data, options) => withSpan('bullmq.enqueue', {
+      'messaging.system': 'redis', 'messaging.destination.name': metricQueue, 'messaging.operation.name': 'publish',
+    }, () => add(jobName, data, {
+      ...options,
+      telemetry: options?.telemetry?.omitContext ? options.telemetry : {
+        ...options?.telemetry,
+        metadata: JSON.stringify(injectTraceContext()),
+      },
+    }), { kind: SpanKind.PRODUCER });
+
+    // Poll once per interval in the background, never during a metrics scrape.
+    let closed = false;
+    let collecting = false;
+    const collect = async () => {
+      if (closed || collecting) return;
+      collecting = true;
+      try {
+        const counts = await queue.getJobCounts('active', 'waiting');
+        if (!closed) {
+          recordGauge('bullmq_jobs_active', counts.active ?? 0, { queue: metricQueue });
+          recordGauge('bullmq_jobs_waiting', counts.waiting ?? 0, { queue: metricQueue });
+        }
+      } catch {
+        if (!closed) {
+          recordGauge('bullmq_jobs_active', null, { queue: metricQueue });
+          recordGauge('bullmq_jobs_waiting', null, { queue: metricQueue });
+        }
+      } finally { collecting = false; }
+    };
+    const interval = setInterval(() => { void collect(); }, 15_000);
+    interval.unref();
+    const close = queue.close.bind(queue);
+    queue.close = async () => {
+      closed = true; clearInterval(interval);
+      recordGauge('bullmq_jobs_active', null, { queue: metricQueue });
+      recordGauge('bullmq_jobs_waiting', null, { queue: metricQueue });
+      await close();
+    };
+    void collect();
+    return queue;
   }
 
   createWorker<
@@ -95,13 +139,24 @@ export class BullMqFactory {
     TResult,
     TName
   > {
-    return new Worker<
+    const metricQueue = queueMetricName(name);
+    const instrumentedProcessor: Processor<TData, TResult, TName> = (job, token) =>
+      withTraceContext(parseJobTraceContext(job.opts.telemetry?.metadata), () =>
+        withSpan('bullmq.job', {
+          'messaging.system': 'redis', 'messaging.destination.name': metricQueue,
+          'messaging.operation.name': 'process', 'retry.attempt': job.attemptsMade,
+        }, async () => {
+          const started = performance.now();
+          try { return await processor(job, token); }
+          finally { recordHistogram('bullmq_job_duration_seconds', (performance.now() - started) / 1_000, { queue: metricQueue, job_name: job.name }); }
+        }, { kind: SpanKind.CONSUMER }));
+    const worker = new Worker<
       TData,
       TResult,
       TName
     >(
       name,
-      processor,
+      instrumentedProcessor,
       {
         connection:
           this.connection,
@@ -109,6 +164,9 @@ export class BullMqFactory {
         concurrency,
       },
     );
+    worker.on('completed', (job) => { recordCounter('bullmq_jobs_completed_total', 1, { queue: metricQueue, job_name: job.name }); });
+    worker.on('failed', (job) => { recordCounter('bullmq_jobs_failed_total', 1, { queue: metricQueue, job_name: job?.name ?? 'other' }); });
+    return worker;
   }
 }
 

@@ -1,4 +1,6 @@
 import amqp from 'amqplib';
+import { injectTraceContext, recordCounter, recordSpanError, SpanKind, withSpan, withTraceContext } from '@blockchain-explorer/observability';
+import { eventMetricName } from '../telemetry.js';
 
 import type {
   ConfirmChannel,
@@ -139,6 +141,20 @@ export class RabbitMqClient {
     event:
       EventEnvelope,
   ): Promise<void> {
+    await withTraceContext(event.metadata?.traceContext ?? injectTraceContext(), () => withSpan('rabbitmq.publish', {
+      'messaging.system': 'rabbitmq', 'messaging.operation.name': 'publish', 'messaging.rabbitmq.destination.routing_key': eventMetricName(event.type),
+    }, async () => {
+      try {
+        await this.publishMessage(event);
+        recordCounter('rabbitmq_published_total', 1, { event_type: eventMetricName(event.type) });
+      } catch (error) {
+        recordCounter('rabbitmq_publish_errors_total', 1, { event_type: eventMetricName(event.type) });
+        throw error;
+      }
+    }, { kind: SpanKind.PRODUCER }));
+  }
+
+  private async publishMessage(event: EventEnvelope): Promise<void> {
     await this.connect();
 
     const channel =
@@ -162,6 +178,7 @@ export class RabbitMqClient {
           event.type,
           body,
           {
+            headers: injectTraceContext(),
             persistent:
               true,
 
@@ -279,6 +296,10 @@ export class RabbitMqClient {
           return;
         }
 
+        await withTraceContext(message.properties.headers, () => withSpan('rabbitmq.consume', {
+          'messaging.system': 'rabbitmq', 'messaging.operation.name': 'process',
+        }, async (span) => {
+        let metricEvent = 'other';
         try {
           if (options.maxMessageBytes !== undefined && message.content.length > options.maxMessageBytes) {
             throw new Error('Event message exceeds the subscription limit');
@@ -301,6 +322,8 @@ export class RabbitMqClient {
             );
           }
 
+          metricEvent = eventMetricName(parsed.type);
+
           await handler(
             parsed,
           );
@@ -308,7 +331,10 @@ export class RabbitMqClient {
           channel.ack(
             message,
           );
-        } catch {
+          recordCounter('rabbitmq_consumed_total', 1, { event_type: metricEvent });
+        } catch (error) {
+          recordCounter('rabbitmq_consumer_errors_total', 1, { event_type: metricEvent });
+          recordSpanError(span, error);
           /*
            * requeue=false:
            * failed message DLQ-ға кетеді.
@@ -319,6 +345,7 @@ export class RabbitMqClient {
             false,
           ); } catch { /* The closed channel already returns the unacknowledged delivery. */ }
         }
+        }, { kind: SpanKind.CONSUMER }));
       },
       {
         noAck:
