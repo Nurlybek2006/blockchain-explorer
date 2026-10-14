@@ -15,6 +15,13 @@
       "when": 1791662256522,
       "tag": "0001_milky_purifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791987594861,
+      "tag": "0002_hard_luckman",
+      "breakpoints": true
     }
   ]
 }

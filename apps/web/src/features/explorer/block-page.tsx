@@ -10,11 +10,14 @@ import { AddressLink } from '@/components/ui';
 import { CopyValue, DetailFields } from './detail-fields';
 import { TransactionsTable } from './data-tables';
 import { ResourceView } from './resource-view';
+import { useRealtimeRefresh } from '@/providers/realtime-provider';
+import { affectsReorganizedData } from '@/features/realtime/resource-events';
 import styles from './explorer.module.css';
 
 export function BlockPage({ number }: { number: string }) {
   const load = useCallback((signal: AbortSignal) => explorerApi.block(number, signal), [number]);
   const resource = useResource(load);
+  useRealtimeRefresh(affectsReorganizedData, resource.reload);
   const blockNumber = BigInt(number);
   return <div className={styles.stack}><PageHeading eyebrow="EXPLORER" title={`Block #${formatBlockNumber(number)}`} description="Block information and the transactions included in it." action={<div className={styles.actions}>{blockNumber > BigInt(0) && <Link className={styles.pillLink} href={`/blocks/${blockNumber - BigInt(1)}`} aria-label="Previous block">← Previous</Link>}<Link className={styles.pillLink} href={`/blocks/${blockNumber + BigInt(1)}`} aria-label="Next block">Next →</Link></div>} /><ResourceView {...resource} retry={resource.reload} name="Block">{(block) => <>
     <Card title="Overview" action={<Badge tone="success">Indexed</Badge>}><DetailFields fields={[

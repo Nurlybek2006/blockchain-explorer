@@ -10,17 +10,21 @@ import { formatBigInteger, formatBlockNumber, formatPercentage, formatTokenAmoun
 import { CopyValue, DetailFields } from './detail-fields';
 import { TransfersTable } from './data-tables';
 import { ResourceView } from './resource-view';
+import { useRealtimeRefresh } from '@/providers/realtime-provider';
+import { affectsToken } from '@/features/realtime/resource-events';
 import styles from './explorer.module.css';
 
 export function TokenPage({ address, page, limit }: { address: string; page: number; limit: number }) {
   const load = useCallback((signal: AbortSignal) => explorerApi.token(address, page, limit, signal), [address, page, limit]);
   const loadPrice = useCallback((signal: AbortSignal) => intelligenceApi.tokenPrice(address, signal), [address]);
   const resource = useResource(load);
+  const relevant = useCallback((event: Parameters<typeof affectsToken>[0]) => affectsToken(event, address), [address]);
+  useRealtimeRefresh(relevant, resource.reload);
   const price = useResource(loadPrice, { pollInterval: 60_000 });
   return <div className={styles.stack}><PageHeading eyebrow="ERC-20 TOKEN" title="Token details" description="Contract metadata and indexed transfer activity." action={<Link className={styles.pillLink} href={`/address/${address}`}>View address activity →</Link>} /><ResourceView {...resource} retry={resource.reload} name="Token">{({ token, transfers, pagination }) => <>
     <div className={styles.stats}><StatCard label="Token" value={token.name ?? 'Unknown token'} note={token.symbol ?? 'Symbol unavailable'} /><StatCard label="USD Price" value={!price.data && price.loading ? 'Loading quote…' : price.data?.priceUsd === null || !price.data ? 'Price unavailable' : formatUsd(price.data.priceUsd)} note={price.error && price.data?.priceUsd !== null && price.data ? 'Last received quote · refresh failed' : price.data?.stale ? <Badge tone="warning">Stale price</Badge> : price.data?.availability === 'available' ? 'Current reference price' : 'No price quote'} /><StatCard label="24h Market Change" value={price.data?.change24hPercent === null || !price.data ? 'Unavailable' : formatPercentage(price.data.change24hPercent)} /><StatCard label="Indexed Transfers" value={formatBigInteger(String(pagination.total))} /></div>
     {price.error && <div role="alert" className={styles.actions}><span className={styles.muted}>The price quote could not be refreshed.</span><Button variant="secondary" onClick={price.reload}>Retry price</Button></div>}
-    <Card title={token.name ?? 'Token metadata'} action={<Badge tone="accent">ERC-20</Badge>}><DetailFields fields={[
+    <Card title={token.name ?? 'Token metadata'} action={<div className={styles.actions}><Badge tone="accent">ERC-20</Badge><Link href={`/contract/${address}`}>Contract verification →</Link></div>}><DetailFields fields={[
       { label: 'Contract address', value: <CopyValue value={token.address} /> },
       { label: 'Symbol', value: token.symbol ?? 'Unavailable' },
       { label: 'Decimals', value: token.decimals ?? 'Unavailable' },

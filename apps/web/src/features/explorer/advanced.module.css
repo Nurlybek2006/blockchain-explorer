@@ -1,0 +1,16 @@
+.panelHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
+.panelHeading h3 { margin: 0; }
+.code { overflow: auto; max-height: 680px; white-space: pre; padding: 18px; border: 1px solid var(--border); background: var(--background); border-radius: 10px; font-size: 12px; line-height: 1.65; tab-size: 2; }
+.abi summary { cursor: pointer; padding: 16px 0; color: var(--text-secondary); }
+.tree { overflow: auto; border: 1px solid var(--border); border-radius: 10px; max-height: 800px; }
+.traceList { list-style: none; padding: 0; margin: 0; min-width: 450px; }
+.call { border-bottom: 1px solid var(--border); padding: 5px 12px; }
+.call:last-child { border-bottom: 0; }
+.call > summary { display: flex; align-items: center; cursor: pointer; min-height: 38px; gap: 10px; }
+.branch { flex-shrink: 0; color: var(--text-secondary); }
+.callSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+.callDetails { padding: 12px 20px; overflow-wrap: anywhere; }
+.callDetails dl { display: grid; grid-template-columns: 80px minmax(0, 1fr); font-size: 12px; gap: 12px; }
+.callDetails dd { margin: 0; }
+.callDetails dt { color: var(--text-secondary); }
+.failed { background: color-mix(in srgb, var(--danger) 5%, transparent); }

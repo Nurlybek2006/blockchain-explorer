@@ -13,6 +13,7 @@ import {
 import {
   IndexerExplorerClient,
 } from './indexer-explorer.client.js';
+import { decodeBlockDetail, decodeContract, decodeNetworkStatus, decodeTraces } from './advanced-explorer.decoder.js';
 
 @Injectable()
 export class ExplorerService {
@@ -185,6 +186,24 @@ export class ExplorerService {
               limit,
             ),
       );
+  }
+
+  getContract(address: string) {
+    return this.cache.remember(`explorer:contract:${address}`, this.listTtl, () => this.indexer.getContract(address), decodeContract);
+  }
+
+  getTraces(hash: string) {
+    return this.cache.remember(`explorer:traces:${hash}`, this.statsTtl, () => this.indexer.getTraces(hash), decodeTraces);
+  }
+
+  getBlockByHash(hash: string) {
+    return this.cache.remember(`explorer:block-hash:${hash}`, this.detailTtl, () => this.indexer.getBlockByHash(hash), decodeBlockDetail);
+  }
+
+  search(q: string) { return this.indexer.search(q); }
+
+  getNetworkStatus() {
+    return this.cache.remember('explorer:network-status', this.statsTtl, () => this.indexer.getNetworkStatus(), decodeNetworkStatus);
   }
 }
 // Explorer request-теріне Redis caching қосады. Бір data қайта-қайта сұралса Indexer мен PostgreSQL-ға unnecessary query бармайды.

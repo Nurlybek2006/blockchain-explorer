@@ -129,6 +129,18 @@ export class RedisCacheClient {
     }
   }
 
+  /** Bounded SCAN batches restricted to this client's namespace. Never uses KEYS. */
+  async deletePrefix(prefix: string): Promise<void> {
+    if (!prefix || /[\[\]*?\\]/.test(prefix)) {
+      throw new Error('Cache prefix must be a non-empty literal');
+    }
+    await this.connect();
+    const literalNamespace = this.key(prefix).replace(/[\\*?\[\]]/g, '\\$&');
+    for await (const keys of this.client.scanIterator({ MATCH: `${literalNamespace}*`, COUNT: 100 })) {
+      if (keys.length > 0) await this.client.unlink(keys);
+    }
+  }
+
   private key(
     key: string,
   ): string {

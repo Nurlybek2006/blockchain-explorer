@@ -7,11 +7,14 @@ import { AppModule } from './../dist/app.module.js';
 describe('Indexer health (e2e)', () => {
   let app: INestApplication<App>;
   const originalIndexerEnabled = process.env.INDEXER_ENABLED;
+  const originalEnrichmentEnabled = process.env.EXPLORER_ENRICHMENT_ENABLED;
 
-  beforeAll(() => { process.env.INDEXER_ENABLED = 'false'; });
+  beforeAll(() => { process.env.INDEXER_ENABLED = 'false'; process.env.EXPLORER_ENRICHMENT_ENABLED = 'false'; });
   afterAll(() => {
     if (originalIndexerEnabled === undefined) delete process.env.INDEXER_ENABLED;
     else process.env.INDEXER_ENABLED = originalIndexerEnabled;
+    if (originalEnrichmentEnabled === undefined) delete process.env.EXPLORER_ENRICHMENT_ENABLED;
+    else process.env.EXPLORER_ENRICHMENT_ENABLED = originalEnrichmentEnabled;
   });
 
   beforeEach(async () => {

@@ -13,13 +13,17 @@ import {
 import {
   InternalServiceGuard,
 } from '../../common/guards/internal-service.guard.js';
+import { AdvancedExplorerModule } from '../advanced/advanced-explorer.module.js';
+import { NetworkStatusService } from './network-status.service.js';
 
 @Module({
+  imports: [AdvancedExplorerModule],
   controllers: [
     ExplorerController,
   ],
 
   providers: [
+    NetworkStatusService,
     ExplorerQueryService,
 
     InternalServiceGuard,

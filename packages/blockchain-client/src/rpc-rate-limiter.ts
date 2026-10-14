@@ -5,18 +5,12 @@ interface RateLimiterOptions {
 }
 
 interface QueueItem {
-  execute: () => Promise<unknown>;
-
-  resolve: (
-    value: unknown,
-  ) => void;
-
-  reject: (
-    reason?: unknown,
-  ) => void;
+  execute: () => Promise<void>;
+  reject: (reason: Error) => void;
 }
 
 export class RpcRateLimiter {
+  private closed = false;
   private readonly queue:
     QueueItem[] = [];
 
@@ -59,22 +53,16 @@ export class RpcRateLimiter {
   schedule<T>(
     task: () => Promise<T>,
   ): Promise<T> {
+    if (this.closed) return Promise.reject(new Error('RPC rate limiter is closed'));
     return new Promise<T>(
       (
         resolve,
         reject,
       ) => {
         this.queue.push({
-          execute: task,
-
-          resolve: (
-            value,
-          ) => {
-            resolve(
-              value as T,
-            );
+          execute: async () => {
+            try { resolve(await task()); } catch (error) { reject(error); }
           },
-
           reject,
         });
 
@@ -86,6 +74,7 @@ export class RpcRateLimiter {
   coolDown(
     milliseconds: number,
   ): void {
+    if (this.closed) return;
     if (
       milliseconds <= 0
     ) {
@@ -108,6 +97,7 @@ export class RpcRateLimiter {
   }
 
   private drain(): void {
+    if (this.closed) return;
     this.clearExpiredTimestamps();
 
     if (
@@ -181,15 +171,6 @@ export class RpcRateLimiter {
 
       void item
         .execute()
-        .then(
-          (
-            result,
-          ) => {
-            item.resolve(
-              result,
-            );
-          },
-        )
         .catch(
           (
             error,
@@ -229,6 +210,7 @@ export class RpcRateLimiter {
   private scheduleDrain(
     milliseconds: number,
   ): void {
+    if (this.closed) return;
     if (
       this.timer !== null
     ) {
@@ -248,6 +230,13 @@ export class RpcRateLimiter {
           1,
         ),
       );
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    for (const item of this.queue.splice(0)) item.reject(new Error('RPC rate limiter is closed'));
   }
 }
 // Барлық RPC request-терді бір queue арқылы өткізіп, секундтық лимит пен параллель request санын бақылайды. 429 алынса бүкіл queue уақытша тоқтай алады.

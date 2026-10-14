@@ -35,6 +35,7 @@ const webUrl = 'http://127.0.0.1:3503';
 const env = {
   ...sourceEnv, NODE_ENV: 'test', API_GATEWAY_PORT: '3500', INDEXER_PORT: '3501', PORTFOLIO_PORT: '3502',
   INDEXER_ENABLED: 'false', PRICE_SCHEDULER_ENABLED: 'false',
+  EXPLORER_ENRICHMENT_ENABLED: 'false', CONTRACT_VERIFICATION_ENABLED: 'false', TRACE_ENABLED: 'false',
   INDEXER_INTERNAL_URL: 'http://127.0.0.1:3501', PORTFOLIO_INTERNAL_URL: 'http://127.0.0.1:3502',
   WEB_ORIGIN: webUrl, ETHEREUM_CHAIN_ID: '11155111',
   INTERNAL_SERVICE_TOKEN: randomBytes(40).toString('base64url'),
@@ -51,6 +52,7 @@ const env = {
 const webEnv = {
   ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
   NEXT_PUBLIC_API_URL: apiUrl, WEB_BUILD_DIR: '.next-phase9', WEB_TSCONFIG_PATH: '.next-phase9-tsconfig.json',
+  NEXT_PUBLIC_WS_URL: 'ws://127.0.0.1:3500/realtime',
 };
 const tokenAddress = `0x${'a'.repeat(40)}`;
 const wallet = `0x${randomBytes(20).toString('hex')}`;

@@ -8,6 +8,8 @@ build/
 .next/
 .next-phase9/
 .next-phase9-tsconfig.json
+.next-phase10/
+.next-phase10-tsconfig.json
 *.tsbuildinfo
 out/
 

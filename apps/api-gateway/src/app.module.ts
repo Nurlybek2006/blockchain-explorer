@@ -25,6 +25,7 @@ import {
 import { AuthModule } from './modules/auth/auth.module.js';
 import { PortfolioModule } from './modules/portfolio/portfolio.module.js';
 import { IntelligenceModule } from './modules/intelligence/intelligence.module.js';
+import { RealtimeModule } from './modules/realtime/realtime.module.js';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { IntelligenceModule } from './modules/intelligence/intelligence.module.j
     IntelligenceModule,
 
     ExplorerModule,
+    RealtimeModule,
 
     HealthModule,
   ],

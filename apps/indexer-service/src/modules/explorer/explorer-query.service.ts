@@ -23,6 +23,7 @@ import {
     tokens,
     transactions,
 } from '../../database/schema/index.js';
+import { resolveIndexedSearch } from './search-resolution.js';
 
 @Injectable()
 export class ExplorerQueryService {
@@ -30,6 +31,26 @@ export class ExplorerQueryService {
         private readonly database:
             DatabaseService,
     ) { }
+
+    async getBlockByHash(hash: string) {
+        const [row] = await this.database.db.select({ number: blocks.number }).from(blocks).where(eq(blocks.hash, hash.toLowerCase())).limit(1);
+        return row ? this.getBlock(row.number) : null;
+    }
+
+    async search(query: unknown) {
+        return resolveIndexedSearch(query, {
+            blockNumber: async number => { const [row] = await this.database.db.select({ number: blocks.number }).from(blocks).where(eq(blocks.number, BigInt(number))).limit(1); return row?.number.toString() ?? null; },
+            transaction: async hash => { const [row] = await this.database.db.select({ hash: transactions.hash }).from(transactions).where(eq(transactions.hash, hash)).limit(1); return Boolean(row); },
+            blockHash: async hash => { const [row] = await this.database.db.select({ number: blocks.number }).from(blocks).where(eq(blocks.hash, hash)).limit(1); return row?.number.toString() ?? null; },
+            addressKind: async address => {
+                const [token] = await this.database.db.select({ address: tokens.address }).from(tokens).where(eq(tokens.address, address)).limit(1);
+                if (token) return 'token';
+                const [row] = await this.database.db.select({ isContract: addresses.isContract }).from(addresses).where(eq(addresses.address, address)).limit(1);
+                if (row) return row.isContract ? 'contract' : 'address';
+                return (await this.getAddress(address, 1, 1)) ? 'address' : null;
+            },
+        });
+    }
 
     async getStats() {
         const [

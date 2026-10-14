@@ -26,5 +26,5 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   async function copy() { try { await navigator.clipboard.writeText(value); setState('copied'); } catch { setState('failed'); }
     if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setState('idle'), 2000); }
-  return <button type="button" className="copy-button" onClick={() => void copy()} aria-label={`${label} ${value}`} title={label}><span aria-hidden="true">{state === 'copied' ? '✓' : '⧉'}</span><span className="sr-only" aria-live="polite">{state === 'failed' ? 'Clipboard unavailable. Select and copy the text.' : state === 'copied' ? 'Copied' : label}</span></button>;
+  return <button type="button" className="copy-button" onClick={() => void copy()} aria-label={label === 'Copy' ? `Copy ${value.length > 128 ? `${value.slice(0, 128)}…` : value}` : label} title={label}><span aria-hidden="true">{state === 'copied' ? '✓' : '⧉'}</span><span className="sr-only" aria-live="polite">{state === 'failed' ? 'Clipboard unavailable. Select and copy the text.' : state === 'copied' ? 'Copied' : label}</span></button>;
 }

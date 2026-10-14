@@ -6,6 +6,7 @@ export * from './tokens.schema.js';
 export * from './token-transfers.schema.js';
 export * from './addresses.schema.js';
 export * from './transaction-traces.schema.js';
+export * from './transaction-trace-requests.schema.js';
 export * from './sync-state.schema.js';
 export * from './checkpoints.schema.js';
 export * from './contract-verifications.schema.js';

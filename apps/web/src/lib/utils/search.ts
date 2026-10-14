@@ -6,6 +6,7 @@ export type ExplorerSearchResult =
 
 export function parseExplorerSearch(input: string): ExplorerSearchResult {
   const query = input.trim();
+  if (query.length > 256) return { kind: 'invalid', message: 'Search values must be at most 256 characters.' };
   if (/^\d+$/.test(query)) {
     const number = BigInt(query).toString();
     return { kind: 'block', value: number, href: `/blocks/${number}` };
@@ -18,7 +19,7 @@ export function parseExplorerSearch(input: string): ExplorerSearchResult {
     const address = query.toLowerCase();
     return { kind: 'address', value: address, href: `/address/${address}` };
   }
-  return { kind: 'invalid', message: 'Enter a block number, transaction hash, or Ethereum address.' };
+  return { kind: 'invalid', message: 'Enter a block number, transaction or block hash, or Ethereum address.' };
 }
 
 export function parseExplorerPagination(query: Record<string, string | string[] | undefined>) {

@@ -2,6 +2,7 @@ import {
   bigint,
   boolean,
   index,
+  integer,
   numeric,
   pgTable,
   timestamp,
@@ -18,6 +19,10 @@ export const addresses = pgTable(
     isContract: boolean('is_contract')
       .notNull()
       .default(false),
+
+    codeCheckedBlock: bigint('code_checked_block', { mode: 'bigint' }),
+    codeCheckAfter: timestamp('code_check_after', { withTimezone: true }),
+    codeCheckAttempts: integer('code_check_attempts').notNull().default(0),
 
     nativeBalanceWei: numeric(
       'native_balance_wei',

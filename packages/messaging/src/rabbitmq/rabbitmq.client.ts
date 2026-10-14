@@ -16,6 +16,8 @@ export interface RabbitMqClientOptions {
   exchange?: string;
 
   prefetch?: number;
+
+  connectionTimeoutMs?: number;
 }
 
 export interface RabbitConsumerOptions {
@@ -24,6 +26,15 @@ export interface RabbitConsumerOptions {
   routingKeys: string[];
 
   deadLetterQueue?: string;
+
+  /** Default durable subscriptions are unchanged; live fanout may be ephemeral. */
+  durable?: boolean;
+  exclusive?: boolean;
+  autoDelete?: boolean;
+  deadLetter?: boolean;
+  messageTtlMs?: number;
+  maxLength?: number;
+  maxMessageBytes?: number;
 }
 
 export type RabbitEventHandler =
@@ -75,6 +86,7 @@ export class RabbitMqClient {
     this.connection =
       await amqp.connect(
         this.options.url,
+        { timeout: this.options.connectionTimeoutMs ?? 10_000 },
       );
 
     this.connection.on(
@@ -202,6 +214,7 @@ export class RabbitMqClient {
       options.deadLetterQueue ??
       `${options.queue}.dlq`;
 
+    if (options.deadLetter !== false) {
     await channel
       .assertExchange(
         deadLetterExchange,
@@ -224,16 +237,20 @@ export class RabbitMqClient {
       deadLetterExchange,
       '#',
     );
+    }
 
     await channel
       .assertQueue(
         options.queue,
         {
-          durable: true,
+          durable: options.durable ?? true,
+          exclusive: options.exclusive ?? false,
+          autoDelete: options.autoDelete ?? false,
 
           arguments: {
-            'x-dead-letter-exchange':
-              deadLetterExchange,
+            ...(options.deadLetter === false ? {} : { 'x-dead-letter-exchange': deadLetterExchange }),
+            ...(options.messageTtlMs === undefined ? {} : { 'x-message-ttl': options.messageTtlMs }),
+            ...(options.maxLength === undefined ? {} : { 'x-max-length': options.maxLength }),
           },
         },
       );
@@ -258,17 +275,21 @@ export class RabbitMqClient {
           ConsumeMessage | null,
       ) => {
         if (!message) {
+          if (this.channel === channel) this.channel = null;
           return;
         }
 
         try {
-          const parsed =
+          if (options.maxMessageBytes !== undefined && message.content.length > options.maxMessageBytes) {
+            throw new Error('Event message exceeds the subscription limit');
+          }
+          const parsed: unknown =
             JSON.parse(
               message.content
                 .toString(
                   'utf8',
                 ),
-            ) as unknown;
+            );
 
           if (
             !isEventEnvelope(
@@ -292,11 +313,11 @@ export class RabbitMqClient {
            * requeue=false:
            * failed message DLQ-ға кетеді.
            */
-          channel.nack(
+          try { channel.nack(
             message,
             false,
             false,
-          );
+          ); } catch { /* The closed channel already returns the unacknowledged delivery. */ }
         }
       },
       {

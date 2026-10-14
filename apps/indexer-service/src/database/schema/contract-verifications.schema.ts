@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   integer,
   jsonb,
@@ -18,6 +19,14 @@ export const contractVerifications =
           length: 42,
         },
       ).primaryKey(),
+
+      status: varchar('status', { length: 16, enum: ['verified', 'unverified', 'pending', 'unsupported', 'failed'] }).notNull().default('verified'),
+      discoveredBlock: bigint('discovered_block', { mode: 'bigint' }),
+      discoveredBlockHash: varchar('discovered_block_hash', { length: 66 }),
+      lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+      nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+      attempts: integer('attempts').notNull().default(0),
+      lastError: varchar('last_error', { length: 255 }),
 
       contractName: varchar(
         'contract_name',
@@ -64,7 +73,6 @@ export const contractVerifications =
           withTimezone: true,
         },
       )
-        .notNull()
         .defaultNow(),
     },
   );

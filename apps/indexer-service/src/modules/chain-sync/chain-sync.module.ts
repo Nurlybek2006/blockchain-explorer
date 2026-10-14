@@ -41,6 +41,7 @@ import {
 import {
   MessagingModule,
 } from '../messaging/messaging.module.js';
+import { AdvancedExplorerModule } from '../advanced/advanced-explorer.module.js';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import {
     AddressesModule,
 
     MessagingModule,
+    AdvancedExplorerModule,
   ],
 
   providers: [

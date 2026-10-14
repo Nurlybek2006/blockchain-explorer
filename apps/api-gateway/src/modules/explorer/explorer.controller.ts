@@ -61,6 +61,33 @@ export class ExplorerController {
       );
   }
 
+  @Get('blocks/hash/:hash')
+  blockByHash(@Param('hash') hash: string) {
+    validateHash(hash);
+    return this.explorer.getBlockByHash(hash.toLowerCase());
+  }
+
+  @Get('contract/:address')
+  contract(@Param('address') address: string) {
+    validateAddress(address);
+    return this.explorer.getContract(address.toLowerCase());
+  }
+
+  @Get('tx/:hash/traces')
+  traces(@Param('hash') hash: string) {
+    validateHash(hash);
+    return this.explorer.getTraces(hash.toLowerCase());
+  }
+
+  @Get('search')
+  search(@Query('q') q: unknown) {
+    if (typeof q !== 'string' || q.trim().length === 0 || q.trim().length > 100) throw new BadRequestException('Invalid search query');
+    return this.explorer.search(q.trim());
+  }
+
+  @Get('network/status')
+  networkStatus() { return this.explorer.getNetworkStatus(); }
+
   @Get('tx/:hash')
   transaction(
     @Param('hash')
@@ -154,5 +181,9 @@ function validateAddress(
       'Invalid Ethereum address',
     );
   }
+}
+
+function validateHash(hash: string): void {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) throw new BadRequestException('Invalid Ethereum hash');
 }
 // Frontend қолданатын public Blockchain Explorer REST API endpoint-терін береді.

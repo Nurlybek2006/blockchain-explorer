@@ -9,6 +9,7 @@ import {
 import {
   NestFactory,
 } from '@nestjs/core';
+import { WsAdapter } from '@nestjs/platform-ws';
 
 import {
   AppModule,
@@ -21,6 +22,7 @@ async function bootstrap() {
     );
 
   app.enableShutdownHooks();
+  app.useWebSocketAdapter(new WsAdapter(app));
 
   app.useGlobalPipes(
     new ValidationPipe({

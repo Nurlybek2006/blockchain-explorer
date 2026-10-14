@@ -9,15 +9,19 @@ import { formatBigInteger, formatBlockNumber } from '@/lib/format';
 import { CopyValue, DetailFields } from './detail-fields';
 import { TransactionsTable, TransfersTable } from './data-tables';
 import { ResourceView } from './resource-view';
+import { useRealtimeRefresh } from '@/providers/realtime-provider';
+import { affectsAddress } from '@/features/realtime/resource-events';
 import styles from './explorer.module.css';
 
 export function AddressPage({ address, page, limit }: { address: string; page: number; limit: number }) {
   const [tab, setTab] = useState('transactions');
   const load = useCallback((signal: AbortSignal) => explorerApi.address(address, page, limit, signal), [address, page, limit]);
   const resource = useResource(load);
+  const relevant = useCallback((event: Parameters<typeof affectsAddress>[0]) => affectsAddress(event, address), [address]);
+  useRealtimeRefresh(relevant, resource.reload);
   return <div className={styles.stack}><PageHeading eyebrow="EXPLORER" title="Address details" description="Indexed activity for this Ethereum address." action={<Link className={styles.pillLink} href={`/token/${address}`}>View token details →</Link>} /><CopyValue value={address} /><ResourceView {...resource} retry={resource.reload} name="Address">{(data) => <>
     <div className={styles.stats}><StatCard label="ETH Balance" value="Unavailable" note="Wallet balances are not indexed here" /><StatCard label="Transactions" value={formatBigInteger(String(data.transactionCount))} /><StatCard label="ERC-20 Transfers" value={formatBigInteger(String(data.tokenTransferCount))} /><StatCard label="Address Type" value={<Badge tone={data.address.isContract ? 'accent' : 'neutral'}>{data.address.isContract ? 'Contract' : 'Wallet / unknown'}</Badge>} /></div>
-    <Card title="Indexed address history"><DetailFields fields={[
+    <Card title="Indexed address history" action={data.address.isContract ? <Link href={`/contract/${address}`}>Contract verification →</Link> : undefined}><DetailFields fields={[
       { label: 'First seen block', value: data.address.firstSeenBlock == null ? 'Unavailable' : <Link href={`/blocks/${data.address.firstSeenBlock}`}>{formatBlockNumber(data.address.firstSeenBlock)}</Link> },
       { label: 'Last seen block', value: data.address.lastSeenBlock == null ? 'Unavailable' : <Link href={`/blocks/${data.address.lastSeenBlock}`}>{formatBlockNumber(data.address.lastSeenBlock)}</Link> },
     ]} /></Card>

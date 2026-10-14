@@ -29,6 +29,8 @@ import {
 } from './utils.js';
 
 export class EthereumRpcClient {
+    private closing = false;
+    private readonly controllers = new Set<AbortController>();
     private readonly url: string;
 
     private readonly timeoutMs:
@@ -121,6 +123,7 @@ export class EthereumRpcClient {
             this.maxRetries;
             attempt += 1
         ) {
+            if (this.closing) throw new Error('Ethereum RPC client is closed');
             try {
                 return await this
                     .rateLimiter
@@ -140,7 +143,7 @@ export class EthereumRpcClient {
                     this.maxRetries;
 
                 if (
-                    isLastAttempt ||
+                    this.closing || isLastAttempt ||
                     !this.isRetryable(
                         error,
                     )
@@ -201,6 +204,7 @@ export class EthereumRpcClient {
 
         const controller =
             new AbortController();
+        this.controllers.add(controller);
 
         const timeout =
             setTimeout(
@@ -298,10 +302,18 @@ export class EthereumRpcClient {
 
             throw error;
         } finally {
+            this.controllers.delete(controller);
             clearTimeout(
                 timeout,
             );
         }
+    }
+
+    /** Abort isolated background clients during service shutdown. Existing clients remain open until called. */
+    close(): void {
+        this.closing = true;
+        this.rateLimiter.close();
+        for (const controller of this.controllers) controller.abort();
     }
 
     private calculateRetryDelay(

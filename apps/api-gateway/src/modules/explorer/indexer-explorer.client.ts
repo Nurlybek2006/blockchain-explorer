@@ -8,6 +8,7 @@ import {
 import {
   ConfigService,
 } from '@nestjs/config';
+import { decodeBlockDetail, decodeContract, decodeNetworkStatus, decodeSearch, decodeTraces } from './advanced-explorer.decoder.js';
 
 @Injectable()
 export class IndexerExplorerClient {
@@ -114,6 +115,24 @@ export class IndexerExplorerClient {
     );
   }
 
+  async getContract(address: string) {
+    const response = decodeContract(await this.get(`/internal/explorer/contracts/${encodeURIComponent(address)}`));
+    if (response.address !== address.toLowerCase()) throw new BadGatewayException('Indexer service returned an invalid response');
+    return response;
+  }
+  async getTraces(hash: string) {
+    const response = decodeTraces(await this.get(`/internal/explorer/transactions/${encodeURIComponent(hash)}/traces`));
+    if (response.transactionHash !== hash.toLowerCase()) throw new BadGatewayException('Indexer service returned an invalid response');
+    return response;
+  }
+  async getBlockByHash(hash: string) {
+    const response = decodeBlockDetail(await this.get(`/internal/explorer/blocks/hash/${encodeURIComponent(hash)}`));
+    if (response.hash !== hash.toLowerCase()) throw new BadGatewayException('Indexer service returned an invalid response');
+    return response;
+  }
+  async search(q: string) { return decodeSearch(await this.get('/internal/explorer/search', { q })); }
+  async getNetworkStatus() { return decodeNetworkStatus(await this.get('/internal/explorer/network/status')); }
+
   private async get(
     path: string,
 
@@ -173,6 +192,8 @@ export class IndexerExplorerClient {
 
             signal:
               controller.signal,
+
+            redirect: 'error',
           },
         );
 
@@ -192,7 +213,7 @@ export class IndexerExplorerClient {
         400
       ) {
         throw new BadRequestException(
-          body,
+          'Invalid Explorer request',
         );
       }
 
@@ -201,20 +222,11 @@ export class IndexerExplorerClient {
         404
       ) {
         throw new NotFoundException(
-          body,
+          'Explorer resource not found',
         );
       }
 
-      throw new BadGatewayException({
-        message:
-          'Indexer service request failed',
-
-        status:
-          response.status,
-
-        details:
-          body,
-      });
+      throw new BadGatewayException('Indexer service request failed');
     } catch (error) {
       if (
         error instanceof
@@ -227,17 +239,7 @@ export class IndexerExplorerClient {
         throw error;
       }
 
-      throw new BadGatewayException({
-        message:
-          'Indexer service unavailable',
-
-        cause:
-          error instanceof Error
-            ? error.message
-            : String(
-                error,
-              ),
-      });
+      throw new BadGatewayException('Indexer service unavailable');
     } finally {
       clearTimeout(
         timeout,
@@ -248,8 +250,30 @@ export class IndexerExplorerClient {
   private async readBody(
     response: Response,
   ): Promise<unknown> {
-    const text =
-      await response.text();
+    const maxBytes = 16 * 1024 * 1024;
+    if (Number(response.headers.get('content-length')) > maxBytes) {
+      await response.body?.cancel();
+      throw new BadGatewayException('Indexer service response exceeds the supported size');
+    }
+    if (!response.body) return null;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const parts: string[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > maxBytes) {
+          await reader.cancel();
+          throw new BadGatewayException('Indexer service response exceeds the supported size');
+        }
+        parts.push(decoder.decode(chunk.value, { stream: true }));
+      }
+      parts.push(decoder.decode());
+    } finally { reader.releaseLock(); }
+    const text = parts.join('');
 
     if (!text) {
       return null;

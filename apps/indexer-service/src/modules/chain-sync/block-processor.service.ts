@@ -2,6 +2,9 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { AdvancedExplorerRepository } from '../advanced/advanced-explorer.repository.js';
+import { loadAdvancedConfig, type AdvancedConfig } from '../advanced/advanced.config.js';
 
 import {
   sql,
@@ -56,6 +59,7 @@ import {
 
 @Injectable()
 export class BlockProcessorService {
+  private readonly advancedOptions: AdvancedConfig;
   private readonly logger =
     new Logger(
       BlockProcessorService.name,
@@ -79,7 +83,9 @@ export class BlockProcessorService {
 
     private readonly eventFactory:
       IndexerEventFactory,
-  ) { }
+    private readonly advancedRepository: AdvancedExplorerRepository,
+    advancedConfig: ConfigService,
+  ) { this.advancedOptions = loadAdvancedConfig(advancedConfig); }
 
   async process(
     chainId: number,
@@ -171,6 +177,11 @@ export class BlockProcessorService {
           tokenData.transfers,
           blockNumber,
         );
+    for (const row of addressRows) if (row.isContract) row.codeCheckedBlock = blockNumber;
+    const contractCandidates = [...new Set([
+      ...block.transactions.flatMap((transaction) => transaction.to ? [transaction.to.toLowerCase()] : []),
+      ...receipts.flatMap((receipt) => receipt.logs.map((log) => log.address.toLowerCase())),
+    ])];
 
     const now =
       new Date();
@@ -745,6 +756,7 @@ export class BlockProcessorService {
                 set: {
                   isContract:
                     sql`${addressesTable.isContract} OR EXCLUDED.is_contract`,
+                  codeCheckedBlock: sql`CASE WHEN EXCLUDED.is_contract THEN COALESCE(${addressesTable.codeCheckedBlock}, EXCLUDED.code_checked_block) ELSE ${addressesTable.codeCheckedBlock} END`,
 
                   firstSeenBlock:
                     sql`LEAST(
@@ -763,6 +775,9 @@ export class BlockProcessorService {
                 },
               });
           }
+
+          // Persist enrichment intents atomically with canonical data. Providers and Redis stay outside ingestion.
+          await this.advancedRepository.recordBlockIntents(tx, blockNumber, blockHash, contractCandidates, this.advancedOptions);
 
           /*
            * INDEXER STATE

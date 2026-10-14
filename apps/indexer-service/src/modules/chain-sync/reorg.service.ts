@@ -24,6 +24,8 @@ import {
 
 import {
   blocks,
+  addresses,
+  contractVerifications,
   checkpoints,
   outboxEvents,
   syncState,
@@ -206,6 +208,8 @@ export class ReorgService {
       );
     }
 
+    const ancestor = commonAncestor;
+
     const reorgEvent =
       createEventEnvelope(
         EVENT_TYPES
@@ -235,6 +239,12 @@ export class ReorgService {
 
     await this.database.db.transaction(
       async (tx) => {
+        // Discovery belongs to the canonical branch. A worker result is also guarded by discovery block hash.
+        await tx.delete(contractVerifications).where(gt(contractVerifications.discoveredBlock, ancestor));
+        await tx.delete(addresses).where(gt(addresses.firstSeenBlock, ancestor));
+        await tx.update(addresses).set({ isContract: false, codeCheckedBlock: null, codeCheckAfter: new Date(), codeCheckAttempts: 0 })
+          .where(gt(addresses.codeCheckedBlock, ancestor));
+        await tx.update(addresses).set({ lastSeenBlock: ancestor, updatedAt: new Date() }).where(gt(addresses.lastSeenBlock, ancestor));
         /*
          * blocks delete болғанда
          * transactions/receipts/logs
@@ -245,7 +255,7 @@ export class ReorgService {
           .where(
             gt(
               blocks.number,
-              commonAncestor!,
+              ancestor,
             ),
           );
 
@@ -257,7 +267,7 @@ export class ReorgService {
             gt(
               checkpoints
                 .blockNumber,
-              commonAncestor!,
+              ancestor,
             ),
           );
 
@@ -265,11 +275,11 @@ export class ReorgService {
           .update(syncState)
           .set({
             lastScannedBlock:
-              commonAncestor!
+              ancestor
                 .toString(),
 
             lastFinalizedBlock:
-              commonAncestor!
+              ancestor
                 .toString(),
 
             lastBlockHash:

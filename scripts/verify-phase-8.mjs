@@ -33,6 +33,7 @@ const env = {
   NODE_ENV: 'test',
   API_GATEWAY_PORT: '3400', INDEXER_PORT: '3401', PORTFOLIO_PORT: '3402',
   INDEXER_ENABLED: 'false',
+  EXPLORER_ENRICHMENT_ENABLED: 'false', CONTRACT_VERIFICATION_ENABLED: 'false', TRACE_ENABLED: 'false',
   INDEXER_INTERNAL_URL: 'http://127.0.0.1:3401', PORTFOLIO_INTERNAL_URL: 'http://127.0.0.1:3402',
   INTERNAL_SERVICE_TOKEN: randomBytes(40).toString('base64url'),
   JWT_ACCESS_SECRET: randomBytes(48).toString('base64url'), JWT_REFRESH_SECRET: randomBytes(48).toString('base64url'),
