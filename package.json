@@ -16,14 +16,11 @@
     "test:observability": "pnpm --dir packages/observability test",
     "build:blockchain-client": "pnpm --dir packages/blockchain-client build",
     "dev:api": "pnpm build:packages && pnpm --dir apps/api-gateway start:dev",
-
     "dev:web": "pnpm --dir apps/web dev",
-
     "infra:up": "docker compose --env-file .env -f infrastructure/compose.yml up -d",
     "infra:down": "docker compose --env-file .env -f infrastructure/compose.yml down",
     "infra:ps": "docker compose --env-file .env -f infrastructure/compose.yml ps",
     "infra:logs": "docker compose --env-file .env -f infrastructure/compose.yml logs -f",
-    
     "db:generate": "pnpm db:generate:api && pnpm db:generate:indexer && pnpm db:generate:portfolio",
     "db:generate:api": "pnpm --dir apps/api-gateway db:generate",
     "db:generate:indexer": "pnpm --dir apps/indexer-service db:generate",
@@ -32,18 +29,30 @@
     "db:migrate:api": "pnpm --dir apps/api-gateway db:migrate",
     "db:migrate:indexer": "pnpm --dir apps/indexer-service db:migrate",
     "db:migrate:portfolio": "pnpm --dir apps/portfolio-service db:migrate",
-
     "build:contracts": "pnpm --dir packages/contracts build",
-
-    
-
     "build:messaging": "pnpm build:observability && pnpm build:contracts && pnpm --dir packages/messaging build",
-
     "build:packages": "pnpm build:observability && pnpm build:contracts && pnpm build:blockchain-client && pnpm --dir packages/messaging build",
-
-
     "dev:indexer": "pnpm build:packages && pnpm --dir apps/indexer-service start:dev",
-
-    "dev:portfolio": "pnpm build:packages && pnpm --dir apps/portfolio-service start:dev"
+    "dev:portfolio": "pnpm build:packages && pnpm --dir apps/portfolio-service start:dev",
+    "test": "pnpm test:unit && pnpm test:contracts && pnpm test:integration && pnpm test:e2e",
+    "test:unit": "pnpm --dir apps/api-gateway test && pnpm --dir apps/indexer-service test && pnpm --dir apps/portfolio-service test && pnpm --dir apps/web test && pnpm --dir packages/observability test && pnpm --dir packages/contracts test",
+    "test:contracts": "pnpm --dir tests test:contracts",
+    "test:integration": "pnpm --dir tests test:integration",
+    "test:e2e": "pnpm --dir tests test:e2e",
+    "test:coverage": "pnpm --dir apps/api-gateway test:cov && pnpm --dir apps/indexer-service test:cov && pnpm --dir apps/portfolio-service test:cov",
+    "build:test-helpers": "pnpm --dir tests build",
+    "lint": "pnpm --dir apps/api-gateway lint && pnpm --dir apps/indexer-service lint && pnpm --dir apps/portfolio-service lint && pnpm --dir apps/web lint",
+    "verify:phase12": "node scripts/verify-phase-12.mjs",
+    "perf:http": "node scripts/performance/http-benchmark.mjs",
+    "perf:indexer": "pnpm build:test-helpers && node scripts/performance/indexer-benchmark.mjs",
+    "prod:build": "docker compose --env-file .env.production -f infrastructure/compose.production.yml build",
+    "prod:up": "docker compose --env-file .env.production -f infrastructure/compose.production.yml up -d",
+    "prod:down": "docker compose --env-file .env.production -f infrastructure/compose.production.yml down",
+    "prod:ps": "docker compose --env-file .env.production -f infrastructure/compose.production.yml ps",
+    "prod:logs": "docker compose --env-file .env.production -f infrastructure/compose.production.yml logs -f",
+    "prod:config": "docker compose --env-file .env.production -f infrastructure/compose.production.yml config --quiet",
+    "db:backup": "node --env-file=.env.production infrastructure/scripts/backup.mjs",
+    "db:restore": "node --env-file=.env.production infrastructure/scripts/restore.mjs",
+    "test:e2e:local": "pnpm --dir apps/api-gateway test:e2e && pnpm --dir apps/indexer-service test:e2e && pnpm --dir apps/portfolio-service test:e2e"
   }
 }

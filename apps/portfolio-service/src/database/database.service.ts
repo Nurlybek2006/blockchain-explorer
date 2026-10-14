@@ -14,6 +14,7 @@ import {
 
 import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
+import { databasePoolConfiguration } from '@blockchain-explorer/contracts';
 import { registerPoolMetrics } from '@blockchain-explorer/observability';
 
 import * as schema from './schema/index.js';
@@ -43,23 +44,7 @@ export class DatabaseService
     this.pool = new Pool({
       connectionString,
 
-      max: Number(
-        this.configService.get(
-          'DB_POOL_MAX',
-        ) ?? 10,
-      ),
-
-      idleTimeoutMillis: Number(
-        this.configService.get(
-          'DB_IDLE_TIMEOUT_MS',
-        ) ?? 30_000,
-      ),
-
-      connectionTimeoutMillis: Number(
-        this.configService.get(
-          'DB_CONNECTION_TIMEOUT_MS',
-        ) ?? 5_000,
-      ),
+      ...databasePoolConfiguration((key) => this.configService.get<unknown>(key)),
 
       application_name:
         'blockchain-explorer-portfolio',

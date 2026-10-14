@@ -16,6 +16,7 @@ out/
 # Environment
 .env
 .env.local
+.env.production
 .env.*.local
 
 # Logs
@@ -36,3 +37,5 @@ coverage/
 # Temporary
 tmp/
 temp/
+backups/
+artifacts/

@@ -26,6 +26,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { PortfolioModule } from './modules/portfolio/portfolio.module.js';
 import { IntelligenceModule } from './modules/intelligence/intelligence.module.js';
 import { RealtimeModule } from './modules/realtime/realtime.module.js';
+import { SecurityModule } from './common/security/security.module.js';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module.js';
     DatabaseModule,
 
     CacheModule,
+    SecurityModule,
 
     AuthModule,
 

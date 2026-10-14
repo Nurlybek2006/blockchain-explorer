@@ -8,7 +8,7 @@ import { loadPricesConfig, type PricesConfig } from './prices.config.js';
 import { PricesRepository, type PriceRecord } from './prices.repository.js';
 
 type PriceListener = (price: AssetPriceResponse) => Promise<void>;
-type PriceStore = Pick<PricesRepository, 'find' | 'findSymbol' | 'save' | 'markUnavailable' | 'getActiveAssetKeys'>;
+type PriceStore = Pick<PricesRepository, 'find' | 'findMany' | 'findSymbol' | 'save' | 'markUnavailable' | 'getActiveAssetKeys'>;
 
 @Injectable()
 export class PricesService implements OnModuleDestroy, OnApplicationShutdown {
@@ -51,15 +51,27 @@ export class PricesService implements OnModuleDestroy, OnApplicationShutdown {
   }
 
   async getPrices(assetKeys: readonly string[]): Promise<AssetPriceResponse[]> {
-    const unique = new Map<string, Promise<AssetPriceResponse>>();
-    for (const rawAssetKey of assetKeys) {
-      const assetKey = validatedAssetKey(rawAssetKey);
-      if (!unique.has(assetKey)) unique.set(assetKey, this.getPrice(assetKey));
-    }
-    const responses = await Promise.all([...unique.values()]);
+    const normalized = assetKeys.map(validatedAssetKey);
+    const keys = [...new Set(normalized)];
+    const cached = await Promise.all(keys.map(async (assetKey) => ({ assetKey, price: await this.cache.get(assetKey) })));
+    const misses = cached.filter(({ price }) => price === null).map(({ assetKey }) => assetKey);
+    // One indexed SQL read for the whole cold portfolio, rather than one per holding.
+    const stored = new Map((await this.repository.findMany(misses)).map((price) => [price.assetKey, price]));
+    const responses = await Promise.all(cached.map(async ({ assetKey, price }) => {
+      if (price) {
+        if (price.stale) this.requestRefresh(assetKey);
+        return price;
+      }
+      const record = stored.get(assetKey);
+      if (!record) { this.requestRefresh(assetKey); return unavailablePrice(assetKey); }
+      const response = serializePrice(record, this.options.staleAfterSeconds);
+      await this.cache.set(response);
+      if (response.stale) this.requestRefresh(assetKey);
+      return response;
+    }));
     const byKey = new Map(responses.map((response) => [response.assetKey, response]));
-    return assetKeys.map((key) => {
-      const response = byKey.get(validatedAssetKey(key));
+    return normalized.map((key) => {
+      const response = byKey.get(key);
       if (!response) throw new Error('Price result is missing');
       return response;
     });

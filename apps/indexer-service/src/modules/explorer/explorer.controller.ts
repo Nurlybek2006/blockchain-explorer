@@ -292,17 +292,19 @@ function parsePagination(
     );
 
   if (
+    (pageRaw !== undefined && (typeof pageRaw !== 'string' || !/^\d{1,7}$/.test(pageRaw))) ||
     !Number.isInteger(
       page,
     ) ||
-    page < 1
+    page < 1 || page > 1_000_000
   ) {
     throw new BadRequestException(
-      'page must be >= 1',
+      'page must be between 1 and 1000000',
     );
   }
 
   if (
+    (limitRaw !== undefined && (typeof limitRaw !== 'string' || !/^\d{1,3}$/.test(limitRaw))) ||
     !Number.isInteger(
       limit,
     ) ||

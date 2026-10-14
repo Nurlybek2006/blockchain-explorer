@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+FROM node:24.21.0-bookworm-slim AS build
+WORKDIR /workspace
+RUN npm install --global --allow-scripts=pnpm pnpm@12.10.1
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api-gateway/package.json apps/api-gateway/package.json
+COPY apps/indexer-service/package.json apps/indexer-service/package.json
+COPY apps/portfolio-service/package.json apps/portfolio-service/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/blockchain-client/package.json packages/blockchain-client/package.json
+COPY packages/messaging/package.json packages/messaging/package.json
+COPY packages/observability/package.json packages/observability/package.json
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --store-dir=/pnpm/store
+COPY packages/ packages/
+COPY apps/api-gateway/ apps/api-gateway/
+RUN pnpm build:packages && pnpm --dir apps/api-gateway build
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter api-gateway deploy --prod --legacy --frozen-lockfile --offline --store-dir=/pnpm/store /out
+RUN find /out -type f -name '*.map' -delete
+
+FROM node:24.21.0-bookworm-slim AS runtime
+ENV NODE_ENV=production LOG_FORMAT=json API_GATEWAY_PORT=3000 MIGRATION_DATABASE_ENV=IDENTITY_DATABASE_URL
+WORKDIR /app
+COPY --from=build --chown=node:node /out/node_modules ./node_modules
+COPY --from=build --chown=node:node /out/package.json ./package.json
+COPY --from=build --chown=node:node /out/dist ./dist
+COPY --from=build --chown=node:node /workspace/apps/api-gateway/src/database/migrations ./migrations
+COPY --chown=node:node infrastructure/docker/migrate.mjs ./migrate.mjs
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=4s --start-period=30s --retries=6 CMD ["node", "-e", "fetch('http://127.0.0.1:3000/health',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["node", "dist/main.js"]

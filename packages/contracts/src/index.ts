@@ -14,3 +14,4 @@ export type * from './http/auth.contracts.js';
 export type * from './http/explorer.contracts.js';
 export type * from './http/advanced-explorer.contracts.js';
 export type * from './realtime/realtime.contracts.js';
+export * from './config/database-pool.config.js';

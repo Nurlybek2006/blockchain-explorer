@@ -28,7 +28,7 @@ const exchangeName = `phase7.${runId}.events`;
 const consumerQueue = `phase7.${runId}.portfolio`;
 const env = {
   ...sourceEnv,
-  NODE_ENV: 'test',
+  NODE_ENV: 'test', API_RATE_LIMIT_ENABLED: 'false',
   API_GATEWAY_PORT: '3300',
   INDEXER_PORT: '3301',
   PORTFOLIO_PORT: '3302',

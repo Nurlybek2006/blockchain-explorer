@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { isAssetKey, isEthereumAddress } from '@blockchain-explorer/contracts';
 import { DatabaseService } from '../../database/database.service.js';
 import { alerts, holdings, portfolios, prices, priceSnapshots, watchlistItems } from '../../database/schema/index.js';
@@ -20,6 +20,11 @@ export class PricesRepository {
   async find(assetKey: string): Promise<PriceRecord | null> {
     const [price] = await this.database.db.select().from(prices).where(eq(prices.assetKey, assetKey)).limit(1);
     return price ?? null;
+  }
+
+  async findMany(assetKeys: readonly string[]): Promise<PriceRecord[]> {
+    if (assetKeys.length === 0) return [];
+    return this.database.db.select().from(prices).where(inArray(prices.assetKey, [...assetKeys]));
   }
 
   async findSymbol(assetKey: string): Promise<string | null> {

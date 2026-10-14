@@ -276,7 +276,7 @@ export class PortfolioJobsWorker
 
             default:
                 throw new Error(
-                    `Unknown portfolio job: ${job.name}`,
+                    'Unknown portfolio job',
                 );
         }
     }

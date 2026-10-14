@@ -54,4 +54,8 @@ describe('Portfolio public request validation', () => {
       type: 'body', metatype: UpdatePortfolioDto,
     })).toMatchObject({ name: 'New name' });
   });
+
+  it.each([{ page: '9007199254740993' }, { page: '-1' }, { page: '1000001' }, { page: ['1', '2'] }, { limit: '1e100' }, { limit: '101' }])('rejects extreme pagination before service calls', async (input) => {
+    await expect(pipe.transform(input, { type: 'query', metatype: PaginationQueryDto })).rejects.toMatchObject({ status: 400 });
+  });
 });

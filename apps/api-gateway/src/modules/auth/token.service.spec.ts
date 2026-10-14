@@ -39,6 +39,8 @@ describe('TokenService verification', () => {
     const valid = { sub: user.id, email: user.email, role: user.role, type: 'access' };
     const invalid = [
       jwt.sign(valid, accessSecret, { ...options, algorithm: 'HS384' }),
+      jwt.sign(valid, 'c'.repeat(64), options),
+      'not.a.jwt',
       jwt.sign(valid, accessSecret, { ...options, expiresIn: -1 }),
       jwt.sign({ ...valid, type: 'refresh' }, accessSecret, options),
       jwt.sign(valid, accessSecret, { ...options, issuer: 'another-issuer' }),
@@ -50,6 +52,13 @@ describe('TokenService verification', () => {
     for (const token of invalid) expect(() => service.verifyAccess(token)).toThrow(UnauthorizedException);
     const malformedRefresh = jwt.sign({ sub: user.id, type: 'refresh', jti: 'bad', familyId: randomUUID() }, refreshSecret, options);
     expect(() => service.verifyRefresh(malformedRefresh)).toThrow(UnauthorizedException);
+  });
+
+  it('rejects expired refresh JWT and an otherwise valid refresh signed by another issuer secret', () => {
+    const service = new TokenService(config());
+    const claims = { sub: user.id, jti: randomUUID(), familyId: randomUUID(), type: 'refresh' };
+    expect(() => service.verifyRefresh(jwt.sign(claims, refreshSecret, { ...options, expiresIn: -1 }))).toThrow(UnauthorizedException);
+    expect(() => service.verifyRefresh(jwt.sign(claims, 'c'.repeat(64), options))).toThrow(UnauthorizedException);
   });
 
   it('rejects unsafe configuration and accepts numeric-second duration settings', () => {
@@ -86,5 +95,17 @@ describe('RegisterDto validation', () => {
       expect(errors.some((error) => error.property === 'password')).toBe(true);
     }
     expect(await validate(plainToInstance(RegisterDto, { email: user.email, password: 'Ж'.repeat(36) }))).toHaveLength(0);
+  });
+
+  it.each([
+    { email: 'not-an-email', password: 'Password123!' },
+    { email: `${'x'.repeat(321)}@example.test`, password: 'Password123!' },
+    { email: user.email, password: 'short' },
+    { email: user.email, password: 'Password123!', displayName: 'x'.repeat(101) },
+    { email: user.email, password: 'Password123!', displayName: ' ' },
+    { email: [user.email], password: 'Password123!' },
+    { email: user.email, password: { password: 'Password123!' } },
+  ])('rejects invalid identity shape and extreme input', async (input) => {
+    expect(await validate(plainToInstance(RegisterDto, input))).not.toHaveLength(0);
   });
 });

@@ -1,0 +1,259 @@
+name: blockchain-explorer-production
+
+x-logging: &bounded-logs
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-backend: &backend
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  stop_grace_period: 45s
+  mem_limit: 768m
+  logging: *bounded-logs
+
+x-common-env: &common-env
+  NODE_ENV: production
+  LOG_FORMAT: json
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-production}
+  OTEL_ENABLED: ${OTEL_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_SAMPLE_RATIO: ${OTEL_SAMPLE_RATIO:-0.1}
+  OTEL_METRIC_EXPORT_INTERVAL_MS: ${OTEL_METRIC_EXPORT_INTERVAL_MS:-15000}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  DB_IDLE_TIMEOUT_MS: ${DB_IDLE_TIMEOUT_MS:-30000}
+  DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-5000}
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379
+  RABBITMQ_URL: amqp://blockchain:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}@rabbitmq:5672/blockchain
+  RABBITMQ_EXCHANGE: blockchain.events
+  RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-20}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN}
+  INDEXER_INTERNAL_URL: http://indexer-service:3001
+  ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL:?Set ETHEREUM_RPC_URL}
+  ETHEREUM_CHAIN_ID: ${ETHEREUM_CHAIN_ID:-11155111}
+  RPC_TIMEOUT_MS: ${RPC_TIMEOUT_MS:-15000}
+  RPC_MAX_RETRIES: ${RPC_MAX_RETRIES:-6}
+  RPC_RETRY_BASE_DELAY_MS: ${RPC_RETRY_BASE_DELAY_MS:-500}
+  RPC_MAX_RETRY_DELAY_MS: ${RPC_MAX_RETRY_DELAY_MS:-30000}
+  RPC_MAX_CONCURRENT_REQUESTS: ${RPC_MAX_CONCURRENT_REQUESTS:-3}
+  RPC_REQUESTS_PER_SECOND: ${RPC_REQUESTS_PER_SECOND:-5}
+
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-blockchain_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD}
+      EXPLORER_DB_PASSWORD: ${EXPLORER_DB_PASSWORD:?Set EXPLORER_DB_PASSWORD}
+      PORTFOLIO_DB_PASSWORD: ${PORTFOLIO_DB_PASSWORD:?Set PORTFOLIO_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/production-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U \"$$POSTGRES_USER\" -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    mem_limit: 768m
+    logging: *bounded-logs
+
+  redis:
+    image: redis:7.4.11-alpine
+    restart: unless-stopped
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD}" }
+    command: [redis-server, --appendonly, "yes", --maxmemory, 384mb, --maxmemory-policy, noeviction, --requirepass, "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD-SHELL, "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    mem_limit: 512m
+    logging: *bounded-logs
+
+  rabbitmq:
+    image: rabbitmq:4.3.6-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: blockchain
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: blockchain
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    mem_limit: 768m
+    logging: *bounded-logs
+
+  migrate-identity:
+    image: blockchain-explorer/api-gateway:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.api }
+    init: true
+    read_only: true
+    command: [node, migrate.mjs]
+    environment: { IDENTITY_DATABASE_URL: "postgresql://identity:${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD}@postgres:5432/identity_db" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+    logging: *bounded-logs
+
+  migrate-explorer:
+    image: blockchain-explorer/indexer-service:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.indexer }
+    init: true
+    read_only: true
+    command: [node, migrate.mjs]
+    environment: { EXPLORER_DATABASE_URL: "postgresql://explorer:${EXPLORER_DB_PASSWORD:?Set EXPLORER_DB_PASSWORD}@postgres:5432/explorer_db" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+    logging: *bounded-logs
+
+  migrate-portfolio:
+    image: blockchain-explorer/portfolio-service:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.portfolio }
+    init: true
+    read_only: true
+    command: [node, migrate.mjs]
+    environment: { PORTFOLIO_DATABASE_URL: "postgresql://portfolio:${PORTFOLIO_DB_PASSWORD:?Set PORTFOLIO_DB_PASSWORD}@postgres:5432/portfolio_db" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+    logging: *bounded-logs
+
+  indexer-service:
+    <<: *backend
+    image: blockchain-explorer/indexer-service:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.indexer }
+    environment:
+      <<: *common-env
+      EXPLORER_DATABASE_URL: postgresql://explorer:${EXPLORER_DB_PASSWORD:?Set EXPLORER_DB_PASSWORD}@postgres:5432/explorer_db
+      INDEXER_ENABLED: ${INDEXER_ENABLED:-true}
+      INDEXER_START_BLOCK: ${INDEXER_START_BLOCK:-latest}
+      INDEXER_CONFIRMATIONS: ${INDEXER_CONFIRMATIONS:-2}
+      INDEXER_BATCH_SIZE: ${INDEXER_BATCH_SIZE:-5}
+      INDEXER_POLL_INTERVAL_MS: ${INDEXER_POLL_INTERVAL_MS:-12000}
+      INDEXER_ERROR_BACKOFF_MS: ${INDEXER_ERROR_BACKOFF_MS:-5000}
+      INDEXER_RECEIPT_CONCURRENCY: ${INDEXER_RECEIPT_CONCURRENCY:-8}
+      INDEXER_REORG_MAX_DEPTH: ${INDEXER_REORG_MAX_DEPTH:-64}
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
+      OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-100}
+      OUTBOX_PROCESSING_TIMEOUT_MS: ${OUTBOX_PROCESSING_TIMEOUT_MS:-60000}
+      OUTBOX_MAX_RETRY_DELAY_MS: ${OUTBOX_MAX_RETRY_DELAY_MS:-60000}
+      EXPLORER_ENRICHMENT_ENABLED: ${EXPLORER_ENRICHMENT_ENABLED:-true}
+      EXPLORER_JOBS_QUEUE_PREFIX: explorer
+      CONTRACT_VERIFICATION_ENABLED: ${CONTRACT_VERIFICATION_ENABLED:-true}
+      CONTRACT_VERIFICATION_COOLDOWN_MS: ${CONTRACT_VERIFICATION_COOLDOWN_MS:-86400000}
+      CONTRACT_VERIFICATION_MAX_LOOKUPS: ${CONTRACT_VERIFICATION_MAX_LOOKUPS:-3}
+      ETHERSCAN_BASE_URL: ${ETHERSCAN_BASE_URL:-https://api.etherscan.io/v2/api}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
+      ETHERSCAN_CHAIN_ID: ${ETHEREUM_CHAIN_ID:-11155111}
+      ETHERSCAN_TIMEOUT_MS: ${ETHERSCAN_TIMEOUT_MS:-10000}
+      ETHERSCAN_MAX_RETRIES: ${ETHERSCAN_MAX_RETRIES:-4}
+      ETHERSCAN_REQUESTS_PER_SECOND: ${ETHERSCAN_REQUESTS_PER_SECOND:-2}
+      TRACE_ENABLED: ${TRACE_ENABLED:-true}
+      TRACE_ONLY_CONTRACT_INTERACTIONS: ${TRACE_ONLY_CONTRACT_INTERACTIONS:-true}
+      TRACE_WORKER_CONCURRENCY: ${TRACE_WORKER_CONCURRENCY:-1}
+      TRACE_MAX_RETRIES: ${TRACE_MAX_RETRIES:-3}
+      TRACE_TIMEOUT_MS: ${TRACE_TIMEOUT_MS:-15000}
+      NETWORK_STATUS_INTERVAL_MS: ${NETWORK_STATUS_INTERVAL_MS:-15000}
+      NETWORK_STATUS_TIMEOUT_MS: ${NETWORK_STATUS_TIMEOUT_MS:-2500}
+    depends_on:
+      migrate-explorer: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  portfolio-service:
+    <<: *backend
+    image: blockchain-explorer/portfolio-service:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.portfolio }
+    environment:
+      <<: *common-env
+      PORTFOLIO_DATABASE_URL: postgresql://portfolio:${PORTFOLIO_DB_PASSWORD:?Set PORTFOLIO_DB_PASSWORD}@postgres:5432/portfolio_db
+      PORTFOLIO_QUEUE_NAME: portfolio-jobs
+      PORTFOLIO_EVENTS_QUEUE: portfolio.events
+      PORTFOLIO_WORKER_CONCURRENCY: ${PORTFOLIO_WORKER_CONCURRENCY:-5}
+      COINGECKO_BASE_URL: ${COINGECKO_BASE_URL:-https://api.coingecko.com/api/v3}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
+      COINGECKO_API_KEY_TYPE: ${COINGECKO_API_KEY_TYPE:-demo}
+      COINGECKO_TIMEOUT_MS: ${COINGECKO_TIMEOUT_MS:-10000}
+      COINGECKO_MAX_RETRIES: ${COINGECKO_MAX_RETRIES:-4}
+      COINGECKO_MAX_CONCURRENT_REQUESTS: ${COINGECKO_MAX_CONCURRENT_REQUESTS:-2}
+      COINGECKO_REQUESTS_PER_SECOND: ${COINGECKO_REQUESTS_PER_SECOND:-0.3}
+      PRICE_SCHEDULER_ENABLED: ${PRICE_SCHEDULER_ENABLED:-true}
+      PRICE_REFRESH_INTERVAL_MS: ${PRICE_REFRESH_INTERVAL_MS:-60000}
+      PORTFOLIO_SNAPSHOT_INTERVAL_MS: ${PORTFOLIO_SNAPSHOT_INTERVAL_MS:-300000}
+    depends_on:
+      migrate-portfolio: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      indexer-service: { condition: service_healthy }
+
+  api-gateway:
+    <<: *backend
+    image: blockchain-explorer/api-gateway:${IMAGE_TAG:-local}
+    build: { context: .., dockerfile: infrastructure/docker/Dockerfile.api }
+    environment:
+      <<: *common-env
+      IDENTITY_DATABASE_URL: postgresql://identity:${IDENTITY_DB_PASSWORD:?Set IDENTITY_DB_PASSWORD}@postgres:5432/identity_db
+      PORTFOLIO_INTERNAL_URL: http://portfolio-service:3002
+      PORTFOLIO_HTTP_TIMEOUT_MS: ${PORTFOLIO_HTTP_TIMEOUT_MS:-10000}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN}
+      CACHE_PREFIX: blockchain-explorer
+      CACHE_STATS_TTL_SECONDS: ${CACHE_STATS_TTL_SECONDS:-5}
+      CACHE_LIST_TTL_SECONDS: ${CACHE_LIST_TTL_SECONDS:-10}
+      CACHE_DETAIL_TTL_SECONDS: ${CACHE_DETAIL_TTL_SECONDS:-60}
+      REALTIME_ENABLED: ${REALTIME_ENABLED:-true}
+      REALTIME_EVENTS_QUEUE: explorer.realtime
+      REALTIME_MAX_CLIENTS: ${REALTIME_MAX_CLIENTS:-500}
+      API_BODY_LIMIT_BYTES: ${API_BODY_LIMIT_BYTES:-65536}
+      API_RATE_LIMIT_ENABLED: ${API_RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
+      RATE_LIMIT_SEARCH_MAX: ${RATE_LIMIT_SEARCH_MAX:-120}
+      RATE_LIMIT_EXPENSIVE_MAX: ${RATE_LIMIT_EXPENSIVE_MAX:-60}
+      RATE_LIMIT_REDIS_TIMEOUT_MS: ${RATE_LIMIT_REDIS_TIMEOUT_MS:-250}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      SECURITY_HSTS_ENABLED: ${SECURITY_HSTS_ENABLED:-false}
+    ports: ["${PROD_BIND_ADDRESS:-127.0.0.1}:${PROD_API_PORT:-3000}:3000"]
+    depends_on:
+      migrate-identity: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      indexer-service: { condition: service_healthy }
+      portfolio-service: { condition: service_healthy }
+
+  web:
+    <<: *backend
+    image: blockchain-explorer/web:${IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL for the browser at build time}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?Set NEXT_PUBLIC_WS_URL for the browser at build time}
+        SECURITY_HSTS_ENABLED: ${SECURITY_HSTS_ENABLED:-false}
+    environment: { NODE_ENV: production }
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m", "/app/apps/web/.next/cache:rw,nosuid,size=64m,uid=1000,gid=1000"]
+    ports: ["${PROD_BIND_ADDRESS:-127.0.0.1}:${PROD_WEB_PORT:-3003}:3003"]
+    depends_on: { api-gateway: { condition: service_healthy } }
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:

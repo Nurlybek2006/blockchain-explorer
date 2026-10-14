@@ -30,7 +30,7 @@ const exchangeName = `phase8.${runId}.events`;
 const consumerQueue = `phase8.${runId}.portfolio`;
 const env = {
   ...sourceEnv,
-  NODE_ENV: 'test',
+  NODE_ENV: 'test', API_RATE_LIMIT_ENABLED: 'false',
   API_GATEWAY_PORT: '3400', INDEXER_PORT: '3401', PORTFOLIO_PORT: '3402',
   INDEXER_ENABLED: 'false',
   EXPLORER_ENRICHMENT_ENABLED: 'false', CONTRACT_VERIFICATION_ENABLED: 'false', TRACE_ENABLED: 'false',
@@ -595,7 +595,13 @@ try {
     assert.equal(unavailable.priceUsd, null);
     assert.equal(unavailable.availability, 'unavailable');
     fixturePrices.set(unknownToken, '1');
-    await refreshPrice(`erc20:${unknownToken}`);
+    // A refresh already in flight can legitimately return the earlier unavailable
+    // fixture observation. Confirm the changed provider state before observing retries.
+    await eventually('fresh previously unavailable token price', async () => {
+      const refreshed = await refreshPrice(`erc20:${unknownToken}`);
+      return refreshed.availability === 'available' && refreshed.stale === false
+        && typeof refreshed.priceUsd === 'string' && /^1(?:\.0+)?$/.test(refreshed.priceUsd);
+    });
     await eventually('unpriced transfer retry completion', async () => {
       const jobs = await queue.getJobs(['completed'], 0, -1);
       return jobs.some((job) => job.name === 'evaluate-transfer-alerts' && job.data.event?.id === missing.id);

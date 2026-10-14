@@ -40,7 +40,9 @@ export class AlertsService implements OnModuleInit, OnModuleDestroy {
     @Inject(Erc20Client) private readonly erc20: TokenMetadata,
     config: ConfigService,
   ) {
-    this.defaultWhaleThreshold = String(config.get<unknown>('WHALE_DEFAULT_THRESHOLD_USD') ?? '100000');
+    const threshold = config.get<unknown>('WHALE_DEFAULT_THRESHOLD_USD') ?? '100000';
+    if (typeof threshold !== 'string' && typeof threshold !== 'number') throw new Error('WHALE_DEFAULT_THRESHOLD_USD must be a positive decimal');
+    this.defaultWhaleThreshold = String(threshold);
     if (!isPositiveUsdThreshold(this.defaultWhaleThreshold)) throw new Error('WHALE_DEFAULT_THRESHOLD_USD must be a positive decimal');
     this.chainId = Number(config.get<unknown>('ETHEREUM_CHAIN_ID') ?? 11155111);
     if (!Number.isSafeInteger(this.chainId) || this.chainId < 1 || this.chainId > 2_147_483_647) {

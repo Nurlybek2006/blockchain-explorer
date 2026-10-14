@@ -36,7 +36,7 @@ const explorerQueuePrefix = `phase10-${runId}-explorer`;
 const apiUrl = 'http://127.0.0.1:3600';
 const webUrl = 'http://127.0.0.1:3603';
 const env = {
-  ...sourceEnv, NODE_ENV: 'test', API_GATEWAY_PORT: '3600', INDEXER_PORT: '3601', PORTFOLIO_PORT: '3602',
+  ...sourceEnv, NODE_ENV: 'test', API_RATE_LIMIT_ENABLED: 'false', API_GATEWAY_PORT: '3600', INDEXER_PORT: '3601', PORTFOLIO_PORT: '3602',
   INDEXER_ENABLED: 'false', PRICE_SCHEDULER_ENABLED: 'false', EXPLORER_ENRICHMENT_ENABLED: 'true',
   CONTRACT_VERIFICATION_ENABLED: 'true', TRACE_ENABLED: 'true', ETHERSCAN_API_KEY: 'phase10-fixture-key', ETHERSCAN_MAX_RETRIES: '0',
   ETHERSCAN_CHAIN_ID: '11155111', TRACE_ONLY_CONTRACT_INTERACTIONS: 'true', REALTIME_ENABLED: 'true',

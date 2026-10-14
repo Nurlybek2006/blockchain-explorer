@@ -270,9 +270,7 @@ export class OutboxPublisherWorker
                             row.id,
                         ),
                     );
-            } catch (
-            error
-            ) {
+            } catch {
                 const attempts =
                     row.attempts +
                     1;

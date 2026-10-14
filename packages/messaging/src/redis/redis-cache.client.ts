@@ -9,6 +9,9 @@ export interface RedisCacheClientOptions {
   url: string;
 
   prefix?: string;
+  connectTimeoutMs?: number;
+  disableOfflineQueue?: boolean;
+  reconnect?: boolean;
 }
 
 export class RedisCacheClient {
@@ -32,6 +35,11 @@ export class RedisCacheClient {
       createClient({
         url:
           options.url,
+        disableOfflineQueue: options.disableOfflineQueue ?? false,
+        socket: {
+          connectTimeout: options.connectTimeoutMs ?? 5_000,
+          ...(options.reconnect === false ? { reconnectStrategy: false } : {}),
+        },
       });
 
     // Requests surface connection failures to the service's cache fallback.
@@ -140,6 +148,9 @@ export class RedisCacheClient {
     }
   }
 
+  /** Abort an optional client when a caller's deadline expires. */
+  disconnect(): void { if (this.client.isOpen) this.client.destroy(); }
+
   /** Bounded SCAN batches restricted to this client's namespace. Never uses KEYS. */
   async deletePrefix(prefix: string): Promise<void> {
     if (!prefix || /[\[\]*?\\]/.test(prefix)) {
@@ -152,6 +163,24 @@ export class RedisCacheClient {
       if (keys.length > 0) await this.client.unlink(keys);
     }
     });
+  }
+
+  /** Atomic fixed windows retain only a bounded, expiring hashed identity key. */
+  async consumeFixedWindow(key: string, limit: number, windowMs: number): Promise<{ allowed: boolean; remaining: number; retryAfterMs: number }> {
+    if (!key || key.length > 256 || !Number.isSafeInteger(limit) || limit < 1 || limit > 1_000_000
+      || !Number.isSafeInteger(windowMs) || windowMs < 1 || windowMs > 86_400_000) {
+      throw new Error('Invalid rate limit configuration');
+    }
+    await this.connect();
+    const result: unknown = await this.client.eval(
+      'local n=redis.call("INCR",KEYS[1]); if n==1 then redis.call("PEXPIRE",KEYS[1],ARGV[1]); end; local t=redis.call("PTTL",KEYS[1]); if t<0 then redis.call("PEXPIRE",KEYS[1],ARGV[1]); t=tonumber(ARGV[1]); end; return {n,t}',
+      { keys: [this.key(key)], arguments: [String(windowMs)] },
+    );
+    if (!Array.isArray(result) || result.length !== 2 || typeof result[0] !== 'number' || typeof result[1] !== 'number'
+      || !Number.isSafeInteger(result[0]) || !Number.isSafeInteger(result[1]) || result[0] < 1 || result[1] < 0) {
+      throw new Error('Invalid Redis rate limit response');
+    }
+    return { allowed: result[0] <= limit, remaining: Math.max(0, limit - result[0]), retryAfterMs: result[0] > limit ? result[1] : 0 };
   }
 
   private async measure<T>(operation: 'get' | 'set' | 'delete' | 'delete_prefix', key: string, work: () => Promise<T>): Promise<T> {

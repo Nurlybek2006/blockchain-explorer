@@ -23,5 +23,6 @@ export function isStoredDecimal(value: unknown, precision: number, scale: number
   if (!isPlainDecimal(value, signed)) return false;
   const unsigned = value.startsWith('-') ? value.slice(1) : value;
   const [integer, fraction = ''] = unsigned.split('.');
+  if (integer === undefined) return false;
   return integer.replace(/^0+/, '').length <= precision - scale && fraction.length <= scale;
 }

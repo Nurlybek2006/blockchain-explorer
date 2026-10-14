@@ -19,11 +19,13 @@
     "dist"
   ],
   "scripts": {
+    "test": "vitest run",
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json --watch",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "devDependencies": {
+    "vitest": "^4.1.2",
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2"
   }

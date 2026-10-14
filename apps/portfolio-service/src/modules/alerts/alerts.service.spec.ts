@@ -107,6 +107,15 @@ describe('AlertsService security and transfer evaluation', () => {
     }));
   });
 
+  it('rejects non-scalar whale configuration instead of coercing arrays or custom objects', () => {
+    for (const threshold of [['100000'], { toString: () => '100000' }, true]) {
+      expect(() => new AlertsService(store, prices, metadata, new ConfigService({ WHALE_DEFAULT_THRESHOLD_USD: threshold })))
+        .toThrow('WHALE_DEFAULT_THRESHOLD_USD must be a positive decimal');
+    }
+    expect(() => new AlertsService(store, prices, metadata, new ConfigService({ WHALE_DEFAULT_THRESHOLD_USD: 100000 })))
+      .not.toThrow();
+  });
+
   it('validates rule requirements after merging a PATCH with the locked current rule', async () => {
     await expect(service.create(owner, { type: 'price_above' })).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.create(owner, { type: 'wallet_activity' })).rejects.toBeInstanceOf(BadRequestException);

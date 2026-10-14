@@ -50,12 +50,7 @@ export class InternalServiceGuard
         'x-internal-service-token'
       ];
 
-    const provided =
-      Array.isArray(
-        raw,
-      )
-        ? raw[0]
-        : raw;
+    const provided = typeof raw === 'string' ? raw : undefined;
 
     if (
       !provided

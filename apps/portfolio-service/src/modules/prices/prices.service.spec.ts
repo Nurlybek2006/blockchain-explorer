@@ -7,7 +7,7 @@ import type { PricesCache } from './prices.cache.js';
 import type { PriceRecord, PricesRepository } from './prices.repository.js';
 import { PricesService, unavailablePrice } from './prices.service.js';
 
-type Store = Pick<PricesRepository, 'find' | 'findSymbol' | 'save' | 'markUnavailable' | 'getActiveAssetKeys'>;
+type Store = Pick<PricesRepository, 'find' | 'findMany' | 'findSymbol' | 'save' | 'markUnavailable' | 'getActiveAssetKeys'>;
 const assetKey = 'native:eth';
 
 function record(): PriceRecord {
@@ -29,6 +29,7 @@ describe('PricesService cache, storage and downstream refresh', () => {
     fetched = { priceUsd: price.usdPrice, change24hPercent: price.change24hPercent, marketCapUsd: price.marketCapUsd, fetchedAt: price.fetchedAt };
     repository = {
       find: vi.fn<Store['find']>().mockResolvedValue(null),
+      findMany: vi.fn<Store['findMany']>().mockResolvedValue([]),
       findSymbol: vi.fn<Store['findSymbol']>().mockResolvedValue('ETH'),
       save: vi.fn<Store['save']>().mockResolvedValue(price),
       markUnavailable: vi.fn<Store['markUnavailable']>().mockResolvedValue(null),
@@ -41,6 +42,34 @@ describe('PricesService cache, storage and downstream refresh', () => {
   });
 
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('batches unique cold assets into one DB lookup while preserving input order and exact decimals', async () => {
+    const tokenKey = `erc20:0x${'a'.repeat(40)}`;
+    const native = record(); const token = { ...native, assetKey: tokenKey, tokenAddress: `0x${'a'.repeat(40)}`, symbol: 'TC' };
+    vi.mocked(repository.findMany).mockResolvedValue([native, token]);
+    const prices = await service.getPrices([tokenKey, assetKey, tokenKey]);
+    expect(prices.map((price) => price.assetKey)).toEqual([tokenKey, assetKey, tokenKey]);
+    expect(prices.every((price) => price.priceUsd === native.usdPrice)).toBe(true);
+    expect(repository.findMany).toHaveBeenCalledExactlyOnceWith([tokenKey, assetKey]);
+    expect(repository.find).not.toHaveBeenCalled(); expect(provider.fetchPrice).not.toHaveBeenCalled();
+    expect(cache.get).toHaveBeenCalledTimes(2); expect(cache.set).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps cached values and schedules stale or missing keys without blocking on providers', async () => {
+    const missing = `erc20:0x${'b'.repeat(40)}`;
+    const cached = { ...unavailablePrice(assetKey), availability: 'available' as const, priceUsd: '42', fetchedAt: new Date().toISOString(), stale: true };
+    vi.mocked(cache.get).mockImplementation(async (key) => key === assetKey ? cached : null);
+    const schedule = vi.fn<(key: string) => Promise<void>>().mockResolvedValue(); service.setRefreshScheduler(schedule);
+    expect(await service.getPrices([assetKey, missing, assetKey])).toEqual([cached, unavailablePrice(missing), cached]);
+    expect(repository.findMany).toHaveBeenCalledExactlyOnceWith([missing]);
+    await Promise.resolve(); expect(schedule).toHaveBeenCalledTimes(2); expect(provider.fetchPrice).not.toHaveBeenCalled();
+  });
+
+  it('validates every bulk asset before accessing cache or storage', async () => {
+    await expect(service.getPrices([assetKey, 'invalid'])).rejects.toThrow('Invalid asset key');
+    expect(cache.get).not.toHaveBeenCalled(); expect(repository.findMany).not.toHaveBeenCalled();
+    expect(await service.getPrices([])).toEqual([]);
+  });
 
   it('serves a valid Redis value without querying DB or provider', async () => {
     const cached: AssetPriceResponse = { ...unavailablePrice(assetKey), priceUsd: '42.123456789012345678', fetchedAt: new Date().toISOString(), availability: 'available' };

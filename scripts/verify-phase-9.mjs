@@ -33,7 +33,7 @@ const consumerQueue = `phase9.${runId}.portfolio`;
 const apiUrl = 'http://127.0.0.1:3500';
 const webUrl = 'http://127.0.0.1:3503';
 const env = {
-  ...sourceEnv, NODE_ENV: 'test', API_GATEWAY_PORT: '3500', INDEXER_PORT: '3501', PORTFOLIO_PORT: '3502',
+  ...sourceEnv, NODE_ENV: 'test', API_RATE_LIMIT_ENABLED: 'false', API_GATEWAY_PORT: '3500', INDEXER_PORT: '3501', PORTFOLIO_PORT: '3502',
   INDEXER_ENABLED: 'false', PRICE_SCHEDULER_ENABLED: 'false',
   EXPLORER_ENRICHMENT_ENABLED: 'false', CONTRACT_VERIFICATION_ENABLED: 'false', TRACE_ENABLED: 'false',
   INDEXER_INTERNAL_URL: 'http://127.0.0.1:3501', PORTFOLIO_INTERNAL_URL: 'http://127.0.0.1:3502',

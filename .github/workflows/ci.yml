@@ -1,0 +1,61 @@
+name: Build, test and production smoke
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_WS_URL: ws://localhost:3000/realtime
+      # Testcontainers owns all databases, provider fixtures and generated secrets.
+      OTEL_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 12.10.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Shared packages
+        run: pnpm build:packages
+      - name: Backend builds
+        run: |
+          pnpm --dir apps/api-gateway build
+          pnpm --dir apps/indexer-service build
+          pnpm --dir apps/portfolio-service build
+      - name: Lint
+        run: pnpm lint
+      - name: Unit and contract tests
+        run: pnpm test:unit
+      - name: Critical-module coverage thresholds
+        run: pnpm test:coverage
+      - name: Disposable Testcontainers integration and public API e2e
+        run: pnpm test:integration
+      - name: Cross-service response contracts
+        run: pnpm test:contracts
+      - name: Public boundary e2e
+        run: pnpm test:e2e
+      - name: Frontend production build
+        run: pnpm --dir apps/web build
+      - name: Deterministic performance and SQL smoke
+        run: pnpm perf:indexer
+      - name: Production Compose, Docker images and container health smoke
+        run: node infrastructure/scripts/verify-production.mjs

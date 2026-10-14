@@ -46,9 +46,10 @@ export class ExplorerController {
     number: string,
   ) {
     if (
-      !/^\d+$/.test(
+      !/^\d{1,19}$/.test(
         number,
       )
+      || BigInt(number) > 9223372036854775807n
     ) {
       throw new BadRequestException(
         'Invalid block number',
