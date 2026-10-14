@@ -6,6 +6,9 @@ node_modules/
 dist/
 build/
 .next/
+.next-phase9/
+.next-phase9-tsconfig.json
+*.tsbuildinfo
 out/
 
 # Environment
