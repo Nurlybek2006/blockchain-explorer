@@ -15,6 +15,7 @@ The production Compose configuration provides a local, production-style deployme
 - Exact decimal valuation, incomplete/stale price states, sampled snapshot history and price/transfer alerts.
 - Transactional outbox, RabbitMQ delivery, Redis cache and BullMQ workers.
 - Distributed traces, structured logs, metrics, provisioned Grafana dashboards and Prometheus alert rules.
+- Complete Kazakh/English interface with Kazakh as the default, a persistent header language switcher and exact locale-aware financial formatting. See [localization architecture and verification](docs/localization-kz-en.md); run `pnpm verify:i18n`.
 
 ## Architecture
 

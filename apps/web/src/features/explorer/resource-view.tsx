@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from '@/hooks/use-translation';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui';
@@ -13,8 +14,9 @@ export function ResourceView<T>({ data, error, loading, retry, name, children }:
   name?: string;
   children: (data: T) => ReactNode;
 }) {
-  if (error instanceof ApiError && error.status === 404) return <EmptyState title={`${name ?? 'Resource'} not found`} description="This resource has not been indexed on Sepolia, or is no longer available." action={<Link href="/">Back to Explorer</Link>} />;
+  const { t } = useTranslation();
+  if (error instanceof ApiError && error.status === 404) return <EmptyState title={t('explorer.resource.notFound', { name: name ?? t('explorer.resource.defaultName') })} description={t("explorer.resource.notFoundDescription")} action={<Link href="/">{t("explorer.resource.back")}</Link>} />;
   if (error) return <ErrorState error={error} retry={retry} />;
-  if (data === undefined || data === null) return loading ? <Skeleton rows={6} /> : <EmptyState title="No data available" />;
+  if (data === undefined || data === null) return loading ? <Skeleton rows={6} /> : <EmptyState title={t("explorer.resource.noData")} />;
   return <>{children(data)}</>;
 }

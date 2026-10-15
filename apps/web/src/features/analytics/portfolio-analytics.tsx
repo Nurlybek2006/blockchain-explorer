@@ -6,35 +6,38 @@ import { Card, EmptyState, ErrorState, Skeleton, StatCard, Tabs } from '@/compon
 import { useResource } from '@/hooks/use-resource';
 import { portfolioApi } from '@/lib/api/portfolio.api';
 import { isHistoryRange } from '@/lib/api/intelligence.decoder';
-import { formatPercentage, formatUsd } from '@/lib/format';
+import { formatDecimal, formatPercentage, formatUsd } from '@/lib/format';
 import { allocationWidth, changeClass } from '../portfolio/portfolio-display';
 import { HistoryChart } from './history-chart';
 import styles from './analytics.module.css';
+import { useTranslation } from '@/hooks/use-translation';
 
 export function PortfolioHistory({ id }: { id: string }) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<PortfolioHistoryRange>('7d');
   const load = useCallback((signal: AbortSignal) => portfolioApi.history(id, range, signal), [id, range]);
   const resource = useResource(load, { pollInterval: 60000 });
-  return <Card title="Portfolio history" action={<Tabs value={range} items={[{ id: '24h', label: '24H' }, { id: '7d', label: '7D' }, { id: '30d', label: '30D' }, { id: '90d', label: '90D' }]} onChange={value => { if (isHistoryRange(value)) setRange(value); }} />}>
+  return <Card title={t('portfolio.analytics.history')} action={<Tabs value={range} items={[{ id: '24h', label: t('portfolio.analytics.range24h') }, { id: '7d', label: t('portfolio.analytics.range7d') }, { id: '30d', label: t('portfolio.analytics.range30d') }, { id: '90d', label: t('portfolio.analytics.range90d') }]} onChange={value => { if (isHistoryRange(value)) setRange(value); }} />}>
     {resource.error ? <ErrorState error={resource.error} retry={resource.reload} /> : !resource.data || resource.data.range !== range ? <Skeleton /> : <HistoryChart key={`${id}-${range}`} points={resource.data.points} />}
   </Card>;
 }
 export function PortfolioAnalytics({ data, error, retry }: { data: PortfolioAnalyticsResponse | null; error: unknown; retry: () => void }) {
-  if (error) return <Card title="Analytics"><ErrorState error={error} retry={retry} /></Card>;
-  if (!data) return <Card title="Analytics"><Skeleton /></Card>;
+  const { t, locale } = useTranslation();
+  if (error) return <Card title={t('portfolio.analytics.title')}><ErrorState error={error} retry={retry} /></Card>;
+  if (!data) return <Card title={t('portfolio.analytics.title')}><Skeleton /></Card>;
   return <div className="page-stack">
     <div className="stats-grid">
-      <StatCard label="24h market value change" value={<span className={changeClass(data.change24hUsd)}>{formatUsd(data.change24hUsd)}</span>} note={data.marketChangeComplete ? 'Current holdings at market prices' : 'Some asset change data is unavailable'} />
-      <StatCard label="Best performing asset" value={data.bestAsset?.symbol ?? 'Unavailable'} note={data.bestAsset ? formatPercentage(data.bestAsset.change24hPercent) : '24h price data is required'} />
-      <StatCard label="Worst performing asset" value={data.worstAsset?.symbol ?? 'Unavailable'} note={data.worstAsset ? formatPercentage(data.worstAsset.change24hPercent) : '24h price data is required'} />
+      <StatCard label={t('portfolio.analytics.marketValueChange')} value={<span className={changeClass(data.change24hUsd)}>{formatUsd(data.change24hUsd, locale)}</span>} note={t(data.marketChangeComplete ? 'portfolio.analytics.currentHoldings' : 'portfolio.analytics.missingChange')} />
+      <StatCard label={t('portfolio.analytics.bestAsset')} value={data.bestAsset?.symbol ?? t('portfolio.unavailable')} note={data.bestAsset ? formatPercentage(data.bestAsset.change24hPercent, locale) : t('portfolio.analytics.requiredPrices')} />
+      <StatCard label={t('portfolio.analytics.worstAsset')} value={data.worstAsset?.symbol ?? t('portfolio.unavailable')} note={data.worstAsset ? formatPercentage(data.worstAsset.change24hPercent, locale) : t('portfolio.analytics.requiredPrices')} />
     </div>
-    <Card title="Asset allocation">
-      <p className={`muted ${styles.intro}`}>Percentages use the priced subtotal of {formatUsd(data.pricedValueUsd)}. {data.unpricedAssetCount > 0 && `${data.unpricedAssetCount} unpriced assets are excluded.`}</p>
-      {!data.allocation.length ? <EmptyState title="No allocation yet" description="Allocation appears when assets have a known value." /> : <div className={styles.allocation}>{data.allocation.map(item => <div key={item.assetKey}>
-        <div className={styles.allocationLabel}><strong>{item.symbol}</strong><span title={`${item.valueUsd} USD`}>{formatUsd(item.valueUsd)} · {item.percentage}%</span></div>
-        <div className={styles.barTrack} role="img" aria-label={`${item.symbol}: ${item.percentage}% of priced assets`}><div className={styles.bar} style={{ width: `${allocationWidth(item.percentage)}%` }} /></div>
+    <Card title={t('portfolio.analytics.allocation')}>
+      <p className={`muted ${styles.intro}`}>{t('portfolio.analytics.allocationSubtotal', { subtotal: formatUsd(data.pricedValueUsd, locale) })} {data.unpricedAssetCount > 0 && t(data.unpricedAssetCount === 1 ? 'portfolio.analytics.excludedAsset' : 'portfolio.analytics.excludedAssets', { count: data.unpricedAssetCount })}</p>
+      {!data.allocation.length ? <EmptyState title={t('portfolio.analytics.noAllocation')} description={t('portfolio.analytics.allocationDescription')} /> : <div className={styles.allocation}>{data.allocation.map(item => <div key={item.assetKey}>
+        <div className={styles.allocationLabel}><strong>{item.symbol}</strong><span title={`${item.valueUsd} USD`}>{formatUsd(item.valueUsd, locale)} · {formatDecimal(item.percentage, locale)}%</span></div>
+        <div className={styles.barTrack} role="img" aria-label={t('portfolio.analytics.allocationLabel', { symbol: item.symbol, percentage: formatDecimal(item.percentage, locale) })}><div className={styles.bar} style={{ width: `${allocationWidth(item.percentage)}%` }} /></div>
       </div>)}</div>}
     </Card>
-    <Card title="Performance basis"><div className="page-stack"><p>Market change compares the prices of your current holdings over 24 hours. Snapshot value change also reflects balance changes.</p><p className="muted">Investment P&amp;L is unavailable because cost basis is not recorded. These figures are not investment returns.</p><div className="stats-grid"><StatCard label="24h snapshot value change" value={formatUsd(data.historicalChange24hUsd)} note={formatPercentage(data.historicalChange24hPercent)} /><StatCard label="Pricing coverage" value={`${data.pricedAssetCount} priced / ${data.unpricedAssetCount} unpriced`} note={data.complete ? 'Complete valuation' : 'Incomplete valuation'} /></div></div></Card>
+    <Card title={t('portfolio.analytics.performanceBasis')}><div className="page-stack"><p>{t('portfolio.analytics.performanceDescription')}</p><p className="muted">{t('portfolio.analytics.pnlUnavailable')}</p><div className="stats-grid"><StatCard label={t('portfolio.analytics.snapshotChange')} value={formatUsd(data.historicalChange24hUsd, locale)} note={formatPercentage(data.historicalChange24hPercent, locale)} /><StatCard label={t('portfolio.analytics.coverage')} value={t('portfolio.analytics.coverageCount', { priced: data.pricedAssetCount, unpriced: data.unpricedAssetCount })} note={t(data.complete ? 'portfolio.analytics.complete' : 'portfolio.analytics.incomplete')} /></div></div></Card>
   </div>;
 }

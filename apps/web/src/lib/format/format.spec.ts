@@ -11,5 +11,5 @@ describe('financial display precision', () => {
   it('rejects unsafe already-rounded numeric input', () => { expect(formatBigInteger(9007199254740992)).toBe('—'); expect(formatGas('30000000')).toBe('30,000,000'); });
   it('formats market changes including unavailable and rounded zero', () => { expect(formatPercentage('2.345')).toBe('+2.35%'); expect(formatPercentage('-0.0001')).toBe('0.00%'); expect(formatPercentage(null)).toBe('—'); });
   it('formats timestamp consistently in UTC and rejects invalid timestamps', () => { expect(formatDateTime('2026-10-14T12:00:00Z')).toContain('12:00:00 UTC'); expect(formatDateTime('bad')).toBe('—'); });
-  it('uses a bounded nonnegative relative time', () => { expect(formatRelativeTime('2026-10-14T00:00:00Z', Date.parse('2026-10-14T01:00:00Z'))).toBe('1h ago'); });
+  it('uses a bounded nonnegative relative time', () => { expect(formatRelativeTime('2026-10-14T00:00:00Z', Date.parse('2026-10-14T01:00:00Z'))).toBe('1 hour ago'); });
 });

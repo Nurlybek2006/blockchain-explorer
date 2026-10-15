@@ -1,17 +1,12 @@
-import type { AlertEventResponse, AlertType } from '@blockchain-explorer/contracts';
+'use client';
+
+import type { AlertEventResponse } from '@blockchain-explorer/contracts';
 import { AddressLink, HashLink } from '@/components/ui';
 import { formatDateTime, formatUsd } from '@/lib/format';
-import { isAlertType } from '@/lib/api/intelligence.decoder';
-
-function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
-function payloadRecord(value: unknown): Record<string, unknown> | null { return isRecord(value) ? value : null; }
-export function eventType(event: AlertEventResponse): AlertType | null {
-  const payload = payloadRecord(event.payload);
-  if (typeof payload?.type === 'string' && isAlertType(payload.type)) return payload.type;
-  return null;
-}
-function text(record: Record<string, unknown>, key: string): string | null { return typeof record[key] === 'string' ? record[key] : null; }
+import { useTranslation } from '@/hooks/use-translation';
+import { payloadRecord, payloadText as text } from './alert-event-display';
 export function AlertEventDetails({ event }: { event: AlertEventResponse }) {
+  const { t, locale } = useTranslation();
   const payload = payloadRecord(event.payload);
   if (!payload) return null;
   const transactionHash = text(payload, 'transactionHash');
@@ -25,15 +20,15 @@ export function AlertEventDetails({ event }: { event: AlertEventResponse }) {
   const validHash = transactionHash !== null && /^0x[\da-f]{64}$/i.test(transactionHash);
   const validAddress = (value: string | null): value is string => value !== null && /^0x[\da-f]{40}$/i.test(value);
   if (!validHash && !validAddress(tokenAddress) && priceUsd === null && valueUsd === null && thresholdUsd === null) return null;
-  return <details><summary>Event details</summary><dl className="profile-grid">
-    {validHash && <><dt>Transaction</dt><dd><HashLink hash={transactionHash} /></dd></>}
-    {validAddress(tokenAddress) && <><dt>Token</dt><dd><AddressLink address={tokenAddress} /></dd></>}
-    {validAddress(fromAddress) && <><dt>From</dt><dd><AddressLink address={fromAddress} /></dd></>}
-    {validAddress(toAddress) && <><dt>To</dt><dd><AddressLink address={toAddress} /></dd></>}
-    {priceUsd !== null && <><dt>Observed price</dt><dd title={`${priceUsd} USD`}>{formatUsd(priceUsd)}</dd></>}
-    {thresholdUsd !== null && <><dt>Threshold</dt><dd title={`${thresholdUsd} USD`}>{formatUsd(thresholdUsd)}</dd></>}
-    {valueUsd !== null && <><dt>Transfer reference value</dt><dd title={`${valueUsd} USD`}>{formatUsd(valueUsd)}</dd></>}
-    {fetchedAt !== null && <><dt>Price timestamp</dt><dd>{formatDateTime(fetchedAt)}</dd></>}
-    {payload.valuationBasis === 'current_price' && <><dt>Valuation basis</dt><dd>Current token price; not historical block price</dd></>}
+  return <details><summary>{t('alerts.eventDetails')}</summary><dl className="profile-grid">
+    {validHash && <><dt>{t('alerts.transaction')}</dt><dd><HashLink hash={transactionHash} /></dd></>}
+    {validAddress(tokenAddress) && <><dt>{t('alerts.token')}</dt><dd><AddressLink address={tokenAddress} /></dd></>}
+    {validAddress(fromAddress) && <><dt>{t('alerts.from')}</dt><dd><AddressLink address={fromAddress} /></dd></>}
+    {validAddress(toAddress) && <><dt>{t('alerts.to')}</dt><dd><AddressLink address={toAddress} /></dd></>}
+    {priceUsd !== null && <><dt>{t('alerts.observedPrice')}</dt><dd title={`${priceUsd} USD`}>{formatUsd(priceUsd, locale)}</dd></>}
+    {thresholdUsd !== null && <><dt>{t('alerts.threshold')}</dt><dd title={`${thresholdUsd} USD`}>{formatUsd(thresholdUsd, locale)}</dd></>}
+    {valueUsd !== null && <><dt>{t('alerts.transferValue')}</dt><dd title={`${valueUsd} USD`}>{formatUsd(valueUsd, locale)}</dd></>}
+    {fetchedAt !== null && <><dt>{t('alerts.priceTimestamp')}</dt><dd>{formatDateTime(fetchedAt, locale)}</dd></>}
+    {payload.valuationBasis === 'current_price' && <><dt>{t('alerts.valuationBasis')}</dt><dd>{t('alerts.currentPrice')}</dd></>}
   </dl></details>;
 }

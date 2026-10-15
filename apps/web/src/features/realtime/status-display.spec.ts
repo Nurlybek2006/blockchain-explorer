@@ -1,12 +1,16 @@
 import type { RealtimeExplorerEvent } from '@blockchain-explorer/contracts/browser';
 import { describe, expect, it } from 'vitest';
-import { connectionDisplay, networkDisplay, traceMessage, verificationDisplay } from './status-display';
+import { connectionDisplay, networkDisplay, traceMessage, traceStatusLabel, verificationDisplay } from './status-display';
 import { affectsAddress, affectsExplorerOverview, affectsToken } from './resource-events';
 describe('Honest status display', () => {
-  it('shows live only for a connected socket', () => { expect(connectionDisplay('live').tone).toBe('success'); expect(connectionDisplay('connecting').label).toBe('Connecting…'); expect(connectionDisplay('offline').tone).toBe('warning'); expect(connectionDisplay('reconnecting').label).toBe('Reconnecting…'); });
-  it('distinguishes verified, pending and failure states', () => { expect(verificationDisplay('verified').tone).toBe('success'); expect(verificationDisplay('pending').tone).toBe('warning'); expect(verificationDisplay('failed').tone).toBe('danger'); expect(verificationDisplay('unverified').label).toBe('Unverified'); });
-  it('explains unsupported and queued trace outcomes', () => { expect(traceMessage('not-supported')).toContain('does not support'); expect(traceMessage('pending')).toContain('background'); expect(traceMessage('failed')).toContain('remain available'); });
-  it('distinguishes syncing and degraded network status', () => { expect(networkDisplay('synced').tone).toBe('success'); expect(networkDisplay('syncing').label).toBe('Syncing'); expect(networkDisplay('degraded').tone).toBe('danger'); });
+  it('shows live only for a connected socket', () => { expect(connectionDisplay('live', 'en').tone).toBe('success'); expect(connectionDisplay('connecting', 'en').label).toBe('Connecting…'); expect(connectionDisplay('offline', 'en').tone).toBe('warning'); expect(connectionDisplay('reconnecting', 'en').label).toBe('Reconnecting…'); });
+  it('distinguishes verified, pending and failure states', () => { expect(verificationDisplay('verified', 'en').tone).toBe('success'); expect(verificationDisplay('pending', 'en').tone).toBe('warning'); expect(verificationDisplay('failed', 'en').tone).toBe('danger'); expect(verificationDisplay('unverified', 'en').label).toBe('Unverified'); });
+  it('explains unsupported and queued trace outcomes', () => { expect(traceMessage('not-supported', 'en')).toContain('does not support'); expect(traceMessage('pending', 'en')).toContain('background'); expect(traceMessage('failed', 'en')).toContain('remain available'); });
+  it('distinguishes syncing and degraded network status', () => { expect(networkDisplay('synced', 'en').tone).toBe('success'); expect(networkDisplay('syncing', 'en').label).toBe('Syncing'); expect(networkDisplay('degraded', 'en').tone).toBe('danger'); });
+});
+describe('Localized status display', () => {
+  it('defaults to Kazakh and keeps technical status meaning', () => { expect(connectionDisplay('live').label).toBe('Тікелей'); expect(connectionDisplay('reconnecting').label).toBe('Қайта қосылуда…'); expect(verificationDisplay('verified').label).toBe('Расталған'); expect(networkDisplay('syncing').label).toBe('Синхрондалуда'); expect(traceStatusLabel('queued')).toBe('Трассировка кезекте'); });
+  it('maps every trace outcome in both languages', () => { for (const status of ['not_requested', 'queued', 'processing', 'completed', 'unsupported', 'failed'] as const) { expect(traceStatusLabel(status, 'kk')).not.toBe(traceStatusLabel(status, 'en')); } expect(traceMessage('not-supported', 'kk')).toContain('RPC'); });
 });
 describe('Targeted resource updates', () => {
   const address = `0x${'ab'.repeat(20)}`, token = `0x${'cd'.repeat(20)}`;

@@ -1,12 +1,25 @@
 'use client';
 import { Badge } from '@/components/ui';
-import { formatBlockNumber } from '@/lib/format';
+import { useTranslation } from '@/hooks/use-translation';
+import { formatBlockNumber, formatDateTime } from '@/lib/format';
 import { useRealtime } from '@/providers/realtime-provider';
 import { connectionDisplay, networkDisplay } from './status-display';
 import styles from './realtime.module.css';
-export function LiveIndicator() { const { state } = useRealtime(), display = connectionDisplay(state); return <span role="status"><Badge tone={display.tone}>{display.label}</Badge></span>; }
-export function NetworkStatusWidget() {
-  const { network, networkUnavailable } = useRealtime(), status = network ? networkDisplay(network.status) : null;
-  return <div className={styles.network} aria-label="Live network state"><div><strong>{network?.networkName ?? 'Sepolia'}</strong><LiveIndicator /></div><span title={network ? `RPC latest ${network.rpcLatestBlock ?? 'unknown'} · Updated ${network.updatedAt}` : undefined}>{network ? `Indexed ${network.indexedBlock === null ? 'unknown' : formatBlockNumber(network.indexedBlock)} · Lag ${network.lag === null ? 'unknown' : formatBlockNumber(network.lag)}` : networkUnavailable ? 'Network status unavailable' : 'Loading network status…'}</span>{status && <span className={styles.indexer}>{status.label}{networkUnavailable ? ' · refresh failed' : ''}</span>}</div>;
+
+export function LiveIndicator() {
+  const { locale } = useTranslation();
+  const { state } = useRealtime(), display = connectionDisplay(state, locale);
+  return <span role="status"><Badge tone={display.tone}>{display.label}</Badge></span>;
 }
-export function ReorgNotice() { const { reorg } = useRealtime(); return reorg === null ? null : <div className={styles.notice} role="status">Chain reorganized after block {formatBlockNumber(reorg)}. Explorer data is being refreshed.</div>; }
+
+export function NetworkStatusWidget() {
+  const { t, locale } = useTranslation();
+  const { network, networkUnavailable } = useRealtime(), status = network ? networkDisplay(network.status, locale) : null;
+  return <div className={styles.network} aria-label={t('realtime.network.aria')}><div><strong>{network?.networkName ?? 'Sepolia'}</strong><LiveIndicator /></div><span title={network ? t('realtime.network.tooltip', { block: network.rpcLatestBlock === null ? t('explorer.labels.unknown') : formatBlockNumber(network.rpcLatestBlock, locale), time: formatDateTime(network.updatedAt, locale) }) : undefined}>{network ? t('realtime.network.summary', { block: network.indexedBlock === null ? t('explorer.labels.unknown') : formatBlockNumber(network.indexedBlock, locale), lag: network.lag === null ? t('explorer.labels.unknown') : formatBlockNumber(network.lag, locale) }) : t(networkUnavailable ? 'realtime.network.unavailable' : 'realtime.network.loading')}</span>{status && <span className={styles.indexer}>{status.label}{networkUnavailable ? ` · ${t('realtime.network.refreshFailed')}` : ''}</span>}</div>;
+}
+
+export function ReorgNotice() {
+  const { t, locale } = useTranslation();
+  const { reorg } = useRealtime();
+  return reorg === null ? null : <div className={styles.notice} role="status">{t('realtime.network.reorg', { block: formatBlockNumber(reorg, locale) })}</div>;
+}

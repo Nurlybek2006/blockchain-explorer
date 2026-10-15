@@ -1,7 +1,55 @@
-import type { ContractVerificationStatus, NetworkStatusResponse, TransactionTraceResponse } from '@blockchain-explorer/contracts/browser';
+import type { ContractVerificationStatus, NetworkStatusResponse, TransactionTraceResponse, TransactionTraceStatus } from '@blockchain-explorer/contracts/browser';
 import type { ConnectionState } from '@/lib/realtime/realtime-client';
+import { DEFAULT_LOCALE } from '@/i18n/config';
+import { createTranslator } from '@/i18n/translator';
+import type { Locale, TranslationKey } from '@/i18n/types';
+
 type Display = { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' | 'accent' };
-export function connectionDisplay(state: ConnectionState): Display { return state === 'live' ? { label: 'Live', tone: 'success' } : state === 'offline' ? { label: 'Offline', tone: 'warning' } : state === 'unconfigured' ? { label: 'Live unavailable', tone: 'neutral' } : { label: state === 'connecting' ? 'Connecting…' : 'Reconnecting…', tone: 'warning' }; }
-export function verificationDisplay(status: ContractVerificationStatus): Display { switch (status) { case 'verified': return { label: 'Verified', tone: 'success' }; case 'pending': return { label: 'Verification pending', tone: 'warning' }; case 'unsupported': return { label: 'Verification unavailable', tone: 'neutral' }; case 'failed': return { label: 'Verification failed', tone: 'danger' }; default: return { label: 'Unverified', tone: 'neutral' }; } }
-export function traceMessage(reason: TransactionTraceResponse['reason']): string { switch (reason) { case 'not-supported': return 'The configured RPC provider does not support call tracing.'; case 'not-indexed': return 'This transaction has not been indexed.'; case 'pending': return 'The background trace job is queued or processing. This view will refresh.'; case 'failed': return 'The trace job could not complete. Transaction and receipt data remain available.'; case 'not-requested': return 'Tracing was not requested for this transaction under the configured policy.'; default: return 'No call trace data was returned.'; } }
-export function networkDisplay(status: NetworkStatusResponse['status']): Display { switch (status) { case 'synced': return { label: 'Synced', tone: 'success' }; case 'degraded': return { label: 'Indexer degraded', tone: 'danger' }; case 'stopped': return { label: 'Indexer stopped', tone: 'neutral' }; case 'starting': return { label: 'Starting', tone: 'warning' }; default: return { label: 'Syncing', tone: 'warning' }; } }
+
+export function connectionDisplay(state: ConnectionState, locale: Locale = DEFAULT_LOCALE): Display {
+  const t = createTranslator(locale);
+  return state === 'live' ? { label: t('realtime.connection.live'), tone: 'success' }
+    : state === 'offline' ? { label: t('realtime.connection.offline'), tone: 'warning' }
+      : state === 'unconfigured' ? { label: t('realtime.connection.unavailable'), tone: 'neutral' }
+        : { label: t(state === 'connecting' ? 'realtime.connection.connecting' : 'realtime.connection.reconnecting'), tone: 'warning' };
+}
+
+export function verificationDisplay(status: ContractVerificationStatus, locale: Locale = DEFAULT_LOCALE): Display {
+  const t = createTranslator(locale);
+  switch (status) {
+    case 'verified': return { label: t('realtime.verification.verified'), tone: 'success' };
+    case 'pending': return { label: t('realtime.verification.pending'), tone: 'warning' };
+    case 'unsupported': return { label: t('realtime.verification.unsupported'), tone: 'neutral' };
+    case 'failed': return { label: t('realtime.verification.failed'), tone: 'danger' };
+    default: return { label: t('realtime.verification.unverified'), tone: 'neutral' };
+  }
+}
+
+export function traceMessage(reason: TransactionTraceResponse['reason'], locale: Locale = DEFAULT_LOCALE): string {
+  const t = createTranslator(locale);
+  switch (reason) {
+    case 'not-supported': return t('realtime.trace.unsupported');
+    case 'not-indexed': return t('realtime.trace.notIndexed');
+    case 'pending': return t('realtime.trace.pending');
+    case 'failed': return t('realtime.trace.failed');
+    case 'not-requested': return t('realtime.trace.notRequested');
+    default: return t('realtime.trace.empty');
+  }
+}
+
+const traceStatusKeys = {
+  not_requested: 'explorer.trace.statusNotRequested', queued: 'explorer.trace.statusQueued', processing: 'explorer.trace.statusProcessing', completed: 'explorer.trace.statusCompleted', unsupported: 'explorer.trace.statusUnsupported', failed: 'explorer.trace.statusFailed',
+} as const satisfies Record<TransactionTraceStatus, TranslationKey>;
+
+export function traceStatusLabel(status: TransactionTraceStatus, locale: Locale = DEFAULT_LOCALE): string { return createTranslator(locale)(traceStatusKeys[status]); }
+
+export function networkDisplay(status: NetworkStatusResponse['status'], locale: Locale = DEFAULT_LOCALE): Display {
+  const t = createTranslator(locale);
+  switch (status) {
+    case 'synced': return { label: t('realtime.network.synced'), tone: 'success' };
+    case 'degraded': return { label: t('realtime.network.degraded'), tone: 'danger' };
+    case 'stopped': return { label: t('realtime.network.stopped'), tone: 'neutral' };
+    case 'starting': return { label: t('realtime.network.starting'), tone: 'warning' };
+    default: return { label: t('realtime.network.syncing'), tone: 'warning' };
+  }
+}

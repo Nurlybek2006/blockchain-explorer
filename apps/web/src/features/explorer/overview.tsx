@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslation } from '@/hooks/use-translation';
+import { pluralCategory } from '@/i18n/translator';
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { Badge, Card, StatCard } from '@/components/ui';
@@ -16,6 +18,7 @@ import { networkDisplay } from '@/features/realtime/status-display';
 import styles from './explorer.module.css';
 
 export function ExplorerOverview() {
+  const { t, locale } = useTranslation();
   const { network, networkUnavailable } = useRealtime();
   const load = useCallback(async (signal: AbortSignal) => {
     const [stats, blocks] = await Promise.all([explorerApi.stats(signal), explorerApi.blocks(1, 8, signal)]);
@@ -24,10 +27,10 @@ export function ExplorerOverview() {
   const resource = useResource(load, { pollInterval: 15_000 });
   useRealtimeRefresh(affectsExplorerOverview, resource.reload);
   return <div className={styles.stack}>
-    <section className={styles.hero}><div className={styles.heroContent}><Badge tone="accent">SEPOLIA EXPLORER</Badge><h1>Every block.<br />A clearer picture.</h1><p>Explore Ethereum activity, follow token transfers, and turn your wallets into a portfolio you can understand.</p><SearchForm /></div></section>
+    <section className={styles.hero}><div className={styles.heroContent}><Badge tone="accent">{t("explorer.overview.eyebrow")}</Badge><h1>{t("explorer.overview.headlineFirst")}<br />{t("explorer.overview.headlineSecond")}</h1><p>{t("explorer.overview.description")}</p><SearchForm /></div></section>
     <ResourceView {...resource} retry={resource.reload}>{({ stats, blocks }) => <>
-      <div className={styles.stats}><StatCard label="Latest Block" value={stats.latestBlock ? <Link href={`/blocks/${stats.latestBlock.number}`}>{formatBlockNumber(stats.latestBlock.number)}</Link> : 'Not indexed'} note="Sepolia network" /><StatCard label="Indexed Blocks" value={formatBigInteger(String(stats.blocks))} /><StatCard label="Transactions" value={formatBigInteger(String(stats.transactions))} /><StatCard label="Tokens" value={formatBigInteger(String(stats.tokens))} /><StatCard label="Token Transfers" value={formatBigInteger(String(stats.tokenTransfers))} /><StatCard label="Indexer Lag" value={network?.lag === null || !network ? 'Unknown' : `${formatBlockNumber(network.lag)} blocks`} note={networkUnavailable ? 'Network status refresh failed' : network ? networkDisplay(network.status).label : 'Loading network status…'} /></div>
-      <Card title="Latest blocks" action={<div className={styles.actions}><LiveIndicator /><Link href="/blocks">View all blocks →</Link></div>}><BlocksTable blocks={blocks.data} /></Card>
+      <div className={styles.stats}><StatCard label={t("explorer.overview.latestBlock")} value={stats.latestBlock ? <Link href={`/blocks/${stats.latestBlock.number}`}>{formatBlockNumber(stats.latestBlock.number, locale)}</Link> : t("explorer.labels.notIndexed")} note={t("explorer.overview.network")} /><StatCard label={t("explorer.overview.indexedBlocks")} value={formatBigInteger(String(stats.blocks), locale)} /><StatCard label={t("explorer.labels.transactions")} value={formatBigInteger(String(stats.transactions), locale)} /><StatCard label={t("explorer.labels.tokens")} value={formatBigInteger(String(stats.tokens), locale)} /><StatCard label={t("explorer.overview.tokenTransfers")} value={formatBigInteger(String(stats.tokenTransfers), locale)} /><StatCard label={t("realtime.network.lag")} value={network?.lag === null || !network ? t("explorer.labels.unknown") : t(pluralCategory(locale, BigInt(network.lag) === 1n ? 1 : 2) === "one" ? "realtime.network.blockCountOne" : "realtime.network.blockCount", { count: formatBlockNumber(network.lag, locale) })} note={networkUnavailable ? t("realtime.network.refreshFailed") : network ? networkDisplay(network.status, locale).label : t("realtime.network.loading")} /></div>
+      <Card title={t("explorer.overview.latestBlocks")} action={<div className={styles.actions}><LiveIndicator /><Link href="/blocks">{t("explorer.overview.allBlocks")}</Link></div>}><BlocksTable blocks={blocks.data} /></Card>
     </>}</ResourceView>
   </div>;
 }

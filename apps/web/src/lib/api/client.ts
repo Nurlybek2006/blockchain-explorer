@@ -1,10 +1,9 @@
 import { ContractError } from './fields';
-
-export class ApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string, message: string) {
-    super(message); this.name = 'ApiError';
-  }
-}
+import { ApiError } from './api-error';
+import { DEFAULT_LOCALE } from '../../i18n/config';
+import { getLocalizedApiError, type ApiErrorContext } from '../../i18n/errors';
+import type { Locale } from '../../i18n/types';
+export { ApiError } from './api-error';
 export function mapHttpError(status: number): ApiError {
   const messages: Record<number, string> = {
     400: 'Please check the entered values.', 401: 'Your session has expired. Please sign in again.',
@@ -75,6 +74,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions<T>): P
 export function decodeEmpty(value: unknown): void {
   if (value !== null) throw new ContractError('empty response');
 }
-export function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.';
+export function errorMessage(error: unknown, locale: Locale = DEFAULT_LOCALE, context?: ApiErrorContext): string {
+  return getLocalizedApiError(error, locale, context);
 }

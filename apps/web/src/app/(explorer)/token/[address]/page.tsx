@@ -3,9 +3,10 @@ import { notFound } from 'next/navigation';
 import { isEthereumAddress } from '@blockchain-explorer/contracts/browser';
 import { TokenPage } from '@/features/explorer/token-page';
 import { parseExplorerPagination } from '@/lib/utils/search';
+import { getServerTranslation } from '@/i18n/server';
 
 type Props = { params: Promise<{ address: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
-export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> { const { address } = await params; return { title: isEthereumAddress(address) ? `Token ${address.slice(0, 10)}…` : 'Token' }; }
+export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> { const { address } = await params; const { t } = await getServerTranslation(); return { title: isEthereumAddress(address) ? t('explorer.metadata.token', { address: `${address.slice(0, 10)}…` }) : t('explorer.labels.token') }; }
 export default async function Page({ params, searchParams }: Props) {
   const { address } = await params;
   if (!isEthereumAddress(address)) notFound();

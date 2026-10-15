@@ -1,0 +1,50 @@
+export const explorerEn = {
+  labels: {
+    explorer: 'EXPLORER', overview: 'Overview', block: 'Block', blocks: 'Blocks', transaction: 'Transaction', transactions: 'Transactions', address: 'Address', token: 'Token', tokens: 'Tokens', contract: 'Smart contract', activity: 'Activity', trace: 'Trace', unavailable: 'Unavailable', unknown: 'Unknown', notIndexed: 'Not indexed', indexed: 'Indexed', enabled: 'Enabled', disabled: 'Disabled', rawAmount: '{amount} raw units', copy: 'Copy {name}',
+  },
+  fields: {
+    blockHeight: 'Block height', timestamp: 'Timestamp', miner: 'Miner / proposer', gasUsed: 'Gas used', gasLimit: 'Gas limit', baseFee: 'Base fee', size: 'Size', bytes: '{count} bytes', blockHash: 'Block hash', parentHash: 'Parent hash', transactionsRoot: 'Transactions root', stateRoot: 'State root', receiptsRoot: 'Receipts root', extraData: 'Extra data', transactionHash: 'Transaction hash', from: 'From', to: 'To', value: 'Value', transactionFee: 'Transaction fee', gasPrice: 'Gas price', maxFee: 'Max fee per gas', priorityFee: 'Max priority fee', nonce: 'Nonce', position: 'Transaction position', transactionType: 'Transaction type', methodSelector: 'Method selector', inputData: 'Input data', firstSeen: 'First seen block', lastSeen: 'Last seen block', contractAddress: 'Contract address', symbol: 'Symbol', decimals: 'Decimals', totalSupply: 'Total supply', lastUpdated: 'Last updated block',
+  },
+  overview: {
+    eyebrow: 'SEPOLIA EXPLORER', headlineFirst: 'Every block.', headlineSecond: 'A clearer picture.', description: 'Explore Ethereum activity, follow token transfers, and turn your wallets into a portfolio you can understand.', latestBlock: 'Latest Block', indexedBlocks: 'Indexed Blocks', transactions: 'Transactions', tokens: 'Tokens', tokenTransfers: 'Token Transfers', network: 'Sepolia network', latestBlocks: 'Latest blocks', allBlocks: 'View all blocks →',
+  },
+  blocks: {
+    indexedCountOne: '{count} indexed block',
+    description: 'Indexed Sepolia blocks, ordered from newest to oldest.', newBlocks: 'New blocks available — open the latest page →', indexedCount: '{count} indexed blocks', detailTitle: 'Block #{number}', detailDescription: 'Block information and the transactions included in it.', previous: '← Previous', next: 'Next →', previousAria: 'Previous block', nextAria: 'Next block', transactionsOne: '{count} transaction', transactionsMany: '{count} transactions',
+  },
+  table: {
+    noBlocks: 'No indexed blocks yet', noBlocksDescription: 'Blocks will appear as the Sepolia indexer catches up.', indexedBlocks: 'Indexed blocks', age: 'Age', hash: 'Hash', miner: 'Miner', noTransactions: 'No transactions', noTransactionsDescription: 'No transactions were indexed for this selection.', ethValue: 'Value · ETH', contractCreation: 'Contract creation', noTokens: 'No indexed tokens yet', noTokensDescription: 'ERC-20 tokens appear when transfer activity is indexed.', indexedTokens: 'Indexed ERC-20 tokens', noTransfers: 'No ERC-20 transfers', noTransfersDescription: 'No token transfers were indexed for this selection.', transfers: 'ERC-20 transfers', amount: 'Amount', unknownToken: 'Unknown token',
+  },
+  resource: {
+    defaultName: 'Resource', searchResult: 'Search result', notFound: '{name} not found', notFoundDescription: 'This resource has not been indexed on Sepolia, or is no longer available.', back: 'Back to Explorer', noData: 'No data available',
+  },
+  search: {
+    title: 'Search the blockchain', description: 'Find indexed blocks by number or hash, transactions, contracts, tokens, and addresses.', placeholder: 'Search by block, transaction hash, address or token', compactPlaceholder: 'Search blocks, transactions, addresses…', aria: 'Search blockchain', finding: 'Finding…', go: 'Go', submit: 'Search', noMatch: 'No indexed match was found on this network.', invalidTitle: 'No matching input format', start: 'Start with a block, hash, or address', tooLong: 'Search values must be at most 256 characters.', invalid: 'Enter a block number, transaction or block hash, or Ethereum address.', result: 'Indexed {type}',
+  },
+  transaction: {
+    title: 'Transaction details', description: 'On-chain execution, gas usage, and emitted events.', transfers: 'Token Transfers', logs: 'Logs', internalCalls: 'Internal Calls / Trace', receiptUnavailable: 'Receipt unavailable', created: 'Contract created', unknownMethod: 'Unknown method', noSelector: 'No method selector', transfersCount: 'ERC-20 transfers ({count})', rawNote: 'Amounts are raw token units. Open token details for the verified decimal scale.', logsCount: 'Event logs ({count})', noLogs: 'No logs were emitted by this transaction.', log: 'Log {index}', removed: 'Removed', logDetails: 'View topics and data', topic: 'Topic {index}',
+  },
+  address: {
+    title: 'Address details', description: 'Indexed activity for this Ethereum address.', tokenDetails: 'View token details →', balance: 'ETH Balance', balanceNote: 'Wallet balances are not indexed here', transfers: 'ERC-20 Transfers', type: 'Address Type', walletUnknown: 'Wallet / unknown', history: 'Indexed address history', verification: 'Contract verification →', transfersNote: 'The {count} most recent indexed transfers. Amounts use raw token units; token details provide the decimal scale.',
+  },
+  token: {
+    indexedCountOne: '{count} indexed token',
+    eyebrow: 'ERC-20 TOKEN', title: 'Token details', description: 'Contract metadata and indexed transfer activity.', addressActivity: 'View address activity →', symbolUnavailable: 'Symbol unavailable', price: 'USD Price', loadingPrice: 'Loading quote…', priceUnavailable: 'Price unavailable', previousPrice: 'Last received quote · refresh failed', stalePrice: 'Stale price', currentPrice: 'Current reference price', noPrice: 'No price quote', change: '24h Market Change', indexedTransfers: 'Indexed Transfers', refreshFailed: 'The price quote could not be refreshed.', retryPrice: 'Retry price', metadata: 'Token metadata', priceNote: 'USD prices come from the configured pricing provider. Sepolia tokens may not have a price quote.', recentTransfers: 'Recent transfers', listDescription: 'ERC-20 contracts discovered through indexed transfer activity.', indexedCount: '{count} indexed tokens',
+  },
+  contract: {
+    eyebrow: 'SMART CONTRACT', title: 'Contract details', description: 'Indexed contract identity, verification source, and activity.', addressActivity: 'Address activity →', overview: 'Contract overview', verificationSource: 'Verification source', compiler: 'Compiler version', optimization: 'Optimization', runs: '{count} runs', verifiedAt: 'Verified at', explorer: 'Contract explorer', rawTransfers: 'Recent indexed ERC-20 transfers in raw units.', sourceUnavailable: 'Verified source code is not available. Block indexing continues independently of verification lookup.', source: 'Verified contract source', constructor: 'Constructor Arguments', emptyConstructor: 'Unavailable or empty.', abiUnavailable: 'ABI unavailable', abiUnavailableDescription: 'The contract has no stored verified ABI.', formattedAbi: 'Formatted contract ABI', jsonInterface: 'JSON interface', copyAbi: 'Copy ABI', verifiedAbi: 'Verified contract ABI', noVerificationSource: 'No verification source',
+  },
+  trace: {
+    statusNotRequested: 'Trace not requested', statusQueued: 'Trace queued', statusProcessing: 'Trace processing', statusCompleted: 'Trace completed', statusUnsupported: 'Trace unavailable', statusFailed: 'Trace failed', refresh: 'Refresh trace status', description: 'Call execution from the configured RPC provider. Depth and trace paths preserve the normalized call hierarchy.', treeAria: 'Transaction call tree', depth: 'Depth {depth}', executionError: 'Error / revert', error: 'Error', errorDescription: 'This call failed or reverted during execution.', input: 'Input', output: 'Output', more: 'Show more calls ({count} remaining)', omitted: '{count} additional calls are available through the trace API; this view is bounded to 5,000 calls.', internalCount: 'Value-bearing internal calls ({count})', noInternal: 'No value-bearing internal calls', noInternalDescription: 'Root execution, failed calls, DELEGATECALL and STATICCALL values are excluded.', internal: 'Value-bearing internal calls', path: 'Trace path', type: 'Call type', ethValue: 'ETH value', bounded: 'Showing the first 1,000 value-bearing calls.',
+  },
+  metadata: {
+    home: 'Explorer Overview', description: 'Explore indexed Sepolia blocks, transactions, addresses, and ERC-20 tokens.', blocks: 'Blocks', block: 'Block #{number}', transaction: 'Transaction {hash}', address: 'Address {address}', token: 'Token {address}', contract: 'Smart contract {address}', search: 'Search', tokens: 'ERC-20 Tokens',
+  },
+} as const;
+
+export const realtimeEn = {
+  connection: { live: 'Live', offline: 'Offline', unavailable: 'Live unavailable', connecting: 'Connecting…', reconnecting: 'Reconnecting…' },
+  verification: { verified: 'Verified', pending: 'Verification pending', unsupported: 'Verification unavailable', failed: 'Verification failed', unverified: 'Unverified' },
+  trace: { unsupported: 'The configured RPC provider does not support call tracing.', notIndexed: 'This transaction has not been indexed.', pending: 'The background trace job is queued or processing. This view will refresh.', failed: 'The trace job could not complete. Transaction and receipt data remain available.', notRequested: 'Tracing was not requested for this transaction under the configured policy.', empty: 'No call trace data was returned.' },
+  network: { blockCountOne: '{count} block', synced: 'Synced', degraded: 'Indexer degraded', stopped: 'Indexer stopped', starting: 'Starting', syncing: 'Syncing', aria: 'Live network state', tooltip: 'RPC latest {block} · Updated {time}', summary: 'Indexed {block} · Lag {lag}', unavailable: 'Network status unavailable', loading: 'Loading network status…', refreshFailed: 'Refresh failed', lag: 'Indexer Lag', blockCount: '{count} blocks', reorg: 'Chain reorganized after block {block}. Explorer data is being refreshed.' },
+} as const;

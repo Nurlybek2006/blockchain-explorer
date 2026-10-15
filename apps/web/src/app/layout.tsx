@@ -3,19 +3,25 @@ import type { ReactNode } from "react";
 import { AuthProvider } from "@/providers/auth-provider";
 import { ToastProvider } from "@/providers/toast-provider";
 import { RealtimeProvider } from "@/providers/realtime-provider";
-import { ReorgNotice } from "@/features/realtime/live-status";
-import { Navigation } from "@/components/layout/navigation";
+import { LocaleProvider } from "@/providers/locale-provider";
+import { AppShell } from "@/components/layout/app-shell";
+import { getServerTranslation } from "@/i18n/server";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: { default: "Blockchain Explorer | Ethereum intelligence", template: "%s | Blockchain Explorer" },
-  description: "Explore Ethereum Sepolia blocks, transactions and tokens. Track portfolios, watchlists and on-chain alerts.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getServerTranslation();
+  return {
+    title: { default: t('common.metadata.title'), template: '%s | Blockchain Explorer' },
+    description: t('common.metadata.description'),
+  };
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const { locale } = await getServerTranslation();
   return (
-    <html lang="en">
-      <body><a className="skip-link" href="#main-content">Skip to content</a><AuthProvider><ToastProvider><RealtimeProvider><div className="app-shell"><Navigation /><main id="main-content" className="main-content"><ReorgNotice />{children}<footer className="app-footer"><span>Blockchain Explorer</span><span>Ethereum Sepolia · All timestamps in UTC</span></footer></main></div></RealtimeProvider></ToastProvider></AuthProvider></body>
+    <html lang={locale}>
+      {/* Browser extensions can add body attributes before React hydrates. */}
+      <body suppressHydrationWarning><LocaleProvider initialLocale={locale}><AuthProvider><ToastProvider><RealtimeProvider><AppShell>{children}</AppShell></RealtimeProvider></ToastProvider></AuthProvider></LocaleProvider></body>
     </html>
   );
 }

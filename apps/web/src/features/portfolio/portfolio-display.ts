@@ -1,14 +1,17 @@
 import type { PortfolioValuationSummary } from '@blockchain-explorer/contracts';
 import { formatPercentage, formatUsd } from '@/lib/format';
+import { createTranslator } from '@/i18n/translator';
+import type { Locale } from '@/i18n/types';
 
-export function valuationDisplay(summary: PortfolioValuationSummary) {
+export function valuationDisplay(summary: PortfolioValuationSummary, locale: Locale = 'en') {
+  const t = createTranslator(locale);
   return {
-    total: formatUsd(summary.totalValueUsd),
-    subtotal: formatUsd(summary.pricedValueUsd),
-    change: formatPercentage(summary.change24hPercent),
-    changeUsd: formatUsd(summary.change24hUsd),
-    valueNote: summary.complete ? 'All observed assets priced' : `${summary.unpricedAssetCount} unpriced assets; priced subtotal ${formatUsd(summary.pricedValueUsd)}`,
-    changeNote: summary.marketChangeComplete ? '24h market change of current holdings' : 'Market change is incomplete',
+    total: formatUsd(summary.totalValueUsd, locale),
+    subtotal: formatUsd(summary.pricedValueUsd, locale),
+    change: formatPercentage(summary.change24hPercent, locale),
+    changeUsd: formatUsd(summary.change24hUsd, locale),
+    valueNote: summary.complete ? t('portfolio.allPriced') : t(summary.unpricedAssetCount === 1 ? 'portfolio.unpricedSubtotalOne' : 'portfolio.unpricedSubtotal', { count: summary.unpricedAssetCount, subtotal: formatUsd(summary.pricedValueUsd, locale) }),
+    changeNote: t(summary.marketChangeComplete ? 'portfolio.currentHoldingsChange' : 'portfolio.incompleteChange'),
     stale: summary.staleAssetCount > 0,
   };
 }

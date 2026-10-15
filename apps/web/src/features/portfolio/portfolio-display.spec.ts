@@ -14,4 +14,11 @@ describe('valuation display semantics', () => {
   });
   it('labels stale and incomplete change separately', () => { const result = valuationDisplay({ ...summary, staleAssetCount: 1 }); expect(result.stale).toBe(true); expect(result.changeNote).toBe('Market change is incomplete'); });
   it('converts only bounded percentages for visual bar widths', () => { expect(allocationWidth('33.333333333333333333')).toBeCloseTo(33.333333); expect(allocationWidth('120')).toBe(100); expect(allocationWidth('-1')).toBe(0); expect(allocationWidth('invalid')).toBe(0); });
+  it('localizes incomplete valuation without treating its subtotal as a total', () => {
+    const result = valuationDisplay(summary, 'kk');
+    expect(result.total).toBe('—');
+    expect(result.valueNote).toContain('1 активтің бағасы белгісіз');
+    expect(result.valueNote).toContain(result.subtotal);
+    expect(result.changeNote).toBe('Нарықтық өзгеріс толық есептелмеген');
+  });
 });

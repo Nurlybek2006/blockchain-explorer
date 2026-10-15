@@ -1,4 +1,5 @@
 'use client';
+import { useTranslation } from '@/hooks/use-translation';
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { Card, EmptyState, PageHeading } from '@/components/ui';
@@ -9,8 +10,9 @@ import { SearchForm } from './search-form';
 import { ResourceView } from './resource-view';
 import styles from './explorer.module.css';
 export function SearchPage({ query }: { query: string }) {
+  const { t } = useTranslation();
   const parsed = parseExplorerSearch(query);
   const load = useCallback((signal: AbortSignal) => advancedExplorerApi.search(query.trim(), signal), [query]);
   const resource = useResource(load, { enabled: parsed.kind !== 'invalid' });
-  return <div className={styles.stack}><PageHeading eyebrow="EXPLORER" title="Search the blockchain" description="Find indexed blocks by number or hash, transactions, contracts, tokens, and addresses." /><Card><SearchForm />{parsed.kind === 'invalid' ? <EmptyState title={query ? 'No matching input format' : 'Start with a block, hash, or address'} description={parsed.message} /> : <ResourceView {...resource} name="Search result" retry={resource.reload}>{result => <div className={styles.searchResult}><p>Indexed {result.type}</p><Link className={styles.mono} href={result.destination}>{result.value} →</Link></div>}</ResourceView>}</Card></div>;
+  return <div className={styles.stack}><PageHeading eyebrow={t("explorer.labels.explorer")} title={t("explorer.search.title")} description={t("explorer.search.description")} /><Card><SearchForm />{parsed.kind === 'invalid' ? <EmptyState title={query ? t("explorer.search.invalidTitle") : t("explorer.search.start")} description={t(parsed.code === 'too-long' ? 'explorer.search.tooLong' : 'explorer.search.invalid')} /> : <ResourceView {...resource} name={t("explorer.resource.searchResult")} retry={resource.reload}>{result => <div className={styles.searchResult}><p>{t('explorer.search.result', { type: t(`explorer.labels.${result.type}`) })}</p><Link className={styles.mono} href={result.destination}>{result.value} →</Link></div>}</ResourceView>}</Card></div>;
 }

@@ -16,4 +16,11 @@ describe('alert form validation against public DTO semantics', () => {
   it('uses server default only for new whale rules', () => { expect(validateAlertForm({ ...draft, type: 'whale', thresholdUsd: '' })).toEqual({ valid: true, input: { type: 'whale', enabled: true } }); expect(validateAlertForm({ ...draft, type: 'whale', thresholdUsd: '' }, true).valid).toBe(false); });
   it('clears previous fields when changing the rule type', () => { expect(alertUpdate({ type: 'wallet_activity', enabled: false, walletAddress: wallet })).toEqual({ type: 'wallet_activity', enabled: false, walletAddress: wallet, tokenAddress: null, thresholdUsd: null }); });
   it('rejects malformed optional token and wallet filters', () => { const result = validateAlertForm({ ...draft, type: 'whale', tokenAddress: '0xno', walletAddress: 'hello' }); expect(result.valid).toBe(false); if (!result.valid) { expect(result.errors.tokenAddress).toBeDefined(); expect(result.errors.walletAddress).toBeDefined(); } });
+  it('returns locale-independent validation keys while retaining exact user input', () => {
+    const invalid = { ...draft, tokenAddress: '0xno', thresholdUsd: '1e5' };
+    const result = validateAlertForm(invalid);
+    if (result.valid) throw new Error('Expected invalid form');
+    expect(result.errors).toEqual({ tokenAddress: 'alerts.validationToken', thresholdUsd: 'alerts.validationThreshold' });
+    expect(invalid.thresholdUsd).toBe('1e5');
+  });
 });

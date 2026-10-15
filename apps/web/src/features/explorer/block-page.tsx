@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslation } from '@/hooks/use-translation';
+import { pluralCategory } from '@/i18n/translator';
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { Badge, Card, PageHeading } from '@/components/ui';
@@ -15,25 +17,26 @@ import { affectsReorganizedData } from '@/features/realtime/resource-events';
 import styles from './explorer.module.css';
 
 export function BlockPage({ number }: { number: string }) {
+  const { t, locale } = useTranslation();
   const load = useCallback((signal: AbortSignal) => explorerApi.block(number, signal), [number]);
   const resource = useResource(load);
   useRealtimeRefresh(affectsReorganizedData, resource.reload);
   const blockNumber = BigInt(number);
-  return <div className={styles.stack}><PageHeading eyebrow="EXPLORER" title={`Block #${formatBlockNumber(number)}`} description="Block information and the transactions included in it." action={<div className={styles.actions}>{blockNumber > BigInt(0) && <Link className={styles.pillLink} href={`/blocks/${blockNumber - BigInt(1)}`} aria-label="Previous block">← Previous</Link>}<Link className={styles.pillLink} href={`/blocks/${blockNumber + BigInt(1)}`} aria-label="Next block">Next →</Link></div>} /><ResourceView {...resource} retry={resource.reload} name="Block">{(block) => <>
-    <Card title="Overview" action={<Badge tone="success">Indexed</Badge>}><DetailFields fields={[
-      { label: 'Block height', value: formatBlockNumber(block.number) },
-      { label: 'Timestamp', value: <time dateTime={block.timestamp}>{formatDateTime(block.timestamp)}</time> },
-      { label: 'Transactions', value: formatBigInteger(String(block.transactionCount)) },
-      { label: 'Miner / proposer', value: block.miner ? <AddressLink address={block.miner} full /> : 'Unavailable' },
-      { label: 'Gas used', value: formatGas(block.gasUsed) },
-      { label: 'Gas limit', value: formatGas(block.gasLimit) },
-      { label: 'Base fee', value: block.baseFeePerGas === null ? 'Unavailable' : `${formatTokenAmount(block.baseFeePerGas, 9, 9)} Gwei` },
-      { label: 'Size', value: block.size === null ? 'Unavailable' : `${formatBigInteger(String(block.size))} bytes` },
-      { label: 'Block hash', value: <CopyValue value={block.hash} /> },
-      { label: 'Parent hash', value: <CopyValue value={block.parentHash} /> },
-      ...[{ label: 'Transactions root', value: block.transactionsRoot }, { label: 'State root', value: block.stateRoot }, { label: 'Receipts root', value: block.receiptsRoot }].map(({ label, value }) => ({ label, value: value === null ? 'Unavailable' : <CopyValue value={value} /> })),
-      { label: 'Extra data', value: <span className={styles.mono}>{block.extraData ?? 'Unavailable'}</span> },
+  return <div className={styles.stack}><PageHeading eyebrow={t("explorer.labels.explorer")} title={t("explorer.blocks.detailTitle", { number: formatBlockNumber(number, locale) })} description={t("explorer.blocks.detailDescription")} action={<div className={styles.actions}>{blockNumber > BigInt(0) && <Link className={styles.pillLink} href={`/blocks/${blockNumber - BigInt(1)}`} aria-label={t("explorer.blocks.previousAria")}>{t("explorer.blocks.previous")}</Link>}<Link className={styles.pillLink} href={`/blocks/${blockNumber + BigInt(1)}`} aria-label={t("explorer.blocks.nextAria")}>{t("explorer.blocks.next")}</Link></div>} /><ResourceView {...resource} retry={resource.reload} name={t("explorer.labels.block")}>{(block) => <>
+    <Card title={t("explorer.labels.overview")} action={<Badge tone="success">{t("explorer.labels.indexed")}</Badge>}><DetailFields fields={[
+      { label: t("explorer.fields.blockHeight"), value: formatBlockNumber(block.number, locale) },
+      { label: t("explorer.fields.timestamp"), value: <time dateTime={block.timestamp}>{formatDateTime(block.timestamp, locale)}</time> },
+      { label: t("explorer.labels.transactions"), value: formatBigInteger(String(block.transactionCount), locale) },
+      { label: t("explorer.fields.miner"), value: block.miner ? <AddressLink address={block.miner} full /> : t("explorer.labels.unavailable") },
+      { label: t("explorer.fields.gasUsed"), value: formatGas(block.gasUsed, locale) },
+      { label: t("explorer.fields.gasLimit"), value: formatGas(block.gasLimit, locale) },
+      { label: t("explorer.fields.baseFee"), value: block.baseFeePerGas === null ? t("explorer.labels.unavailable") : `${formatTokenAmount(block.baseFeePerGas, 9, 9, locale)} Gwei` },
+      { label: t("explorer.fields.size"), value: block.size === null ? t("explorer.labels.unavailable") : t("explorer.fields.bytes", { count: formatBigInteger(String(block.size), locale) }) },
+      { label: t("explorer.fields.blockHash"), value: <CopyValue value={block.hash} /> },
+      { label: t("explorer.fields.parentHash"), value: <CopyValue value={block.parentHash} /> },
+      ...[{ label: t("explorer.fields.transactionsRoot"), value: block.transactionsRoot }, { label: t("explorer.fields.stateRoot"), value: block.stateRoot }, { label: t("explorer.fields.receiptsRoot"), value: block.receiptsRoot }].map(({ label, value }) => ({ label, value: value === null ? t("explorer.labels.unavailable") : <CopyValue value={value} /> })),
+      { label: t("explorer.fields.extraData"), value: <span className={styles.mono}>{block.extraData ?? t("explorer.labels.unavailable")}</span> },
     ]} /></Card>
-    <Card title={`Transactions (${block.transactions.length})`}><TransactionsTable transactions={block.transactions} /></Card>
+    <Card title={t(pluralCategory(locale, block.transactions.length) === "one" ? "explorer.blocks.transactionsOne" : "explorer.blocks.transactionsMany", { count: formatBigInteger(block.transactions.length, locale) })}><TransactionsTable transactions={block.transactions} /></Card>
   </>}</ResourceView></div>;
 }

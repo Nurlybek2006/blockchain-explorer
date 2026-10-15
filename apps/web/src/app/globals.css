@@ -157,6 +157,33 @@ h3 {
   font-size: 12px;
   padding: 8px 12px;
 }
+.language-switcher {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.language-switcher button {
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+}
+.language-switcher button:hover {
+  color: var(--text-primary);
+  background: var(--surface-secondary);
+}
+.language-switcher button[aria-pressed="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-secondary));
+}
 .user-link {
   display: flex;
   align-items: center;
@@ -854,9 +881,15 @@ tbody tr:hover {
 }
 @media (max-width: 700px) {
   .app-header {
-    gap: 12px;
+    gap: 8px;
     height: 64px;
     padding: 0 16px;
+  }
+  .language-switcher {
+    padding: 2px;
+  }
+  .language-switcher button {
+    padding: 4px;
   }
   .header-search {
     display: none;
@@ -966,5 +999,26 @@ tbody tr:hover {
     scroll-behavior: auto !important;
     animation: none !important;
     transition: none !important;
+  }
+}
+@media (max-width: 380px) {
+  .app-header {
+    padding: 0 10px;
+  }
+  .brand {
+    gap: 6px;
+  }
+  .brand-mark {
+    font-size: 24px;
+  }
+  .header-user .button {
+    padding: 8px;
+    font-size: 11px;
+  }
+  .header-user > .muted {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
