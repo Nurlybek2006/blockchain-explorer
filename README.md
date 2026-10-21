@@ -215,6 +215,7 @@ Testcontainers starts disposable PostgreSQL, Redis and RabbitMQ with generated s
 
 Regression commands: verify:phase7 through verify:phase11. Verification scripts isolate their database/topology/cache/job namespaces and clean only owned resources. Performance scripts measure HTTP and deterministic block processing without an external load framework; see the Phase 12 report for results and command options.
 
+
 HTTP frontend smoke verifies production HTML and assets. Browser clicks, visual layout and hydration are not fully verified by HTTP smoke. Final counts, coverage and benchmark evidence are maintained in [Phase 12](docs/phase-12-production-hardening.md) and the [checklist](docs/production-checklist.md).
 
 ## Security
