@@ -7,3 +7,4 @@ export type * from './http/portfolio.contracts.js';
 export type * from './http/intelligence.contracts.js';
 export * from './utils/ethereum-address.js';
 export * from './utils/asset-key.js';
+export * from './http/activity.contracts.js';

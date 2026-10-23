@@ -168,6 +168,20 @@ export class ExplorerController {
         query.limit,
       );
   }
+
+  @Get('address/:address/activity')
+  activity(
+    @Param('address') address: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    validateAddress(address);
+
+    return this.explorer.getActivity(
+      address.toLowerCase(),
+      query.page,
+      query.limit,
+    );
+  }
 }
 
 function validateAddress(

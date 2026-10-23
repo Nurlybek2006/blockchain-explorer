@@ -10,6 +10,7 @@ import {
 } from '@nestjs/config';
 import { decodeBlockDetail, decodeContract, decodeNetworkStatus, decodeSearch, decodeTraces } from './advanced-explorer.decoder.js';
 import { propagationHeaders } from '@blockchain-explorer/observability';
+import { decodeWalletActivity } from '@blockchain-explorer/contracts';
 
 @Injectable()
 export class IndexerExplorerClient {
@@ -232,11 +233,11 @@ export class IndexerExplorerClient {
     } catch (error) {
       if (
         error instanceof
-          BadRequestException ||
+        BadRequestException ||
         error instanceof
-          NotFoundException ||
+        NotFoundException ||
         error instanceof
-          BadGatewayException
+        BadGatewayException
       ) {
         throw error;
       }
@@ -287,6 +288,35 @@ export class IndexerExplorerClient {
       );
     } catch {
       return text;
+    }
+  }
+
+  async getActivity(
+    address: string,
+    page: number,
+    limit: number,
+  ) {
+    const body = await this.get(
+      `/internal/explorer/addresses/${encodeURIComponent(address)}/activity`,
+      { page, limit },
+    );
+
+    try {
+      const result = decodeWalletActivity(body);
+
+      if (
+        result.address !== address.toLowerCase() ||
+        result.pagination.page !== page ||
+        result.pagination.limit !== limit
+      ) {
+        throw new Error('Activity response mismatch');
+      }
+
+      return result;
+    } catch {
+      throw new BadGatewayException(
+        'Indexer service returned an invalid activity response',
+      );
     }
   }
 }

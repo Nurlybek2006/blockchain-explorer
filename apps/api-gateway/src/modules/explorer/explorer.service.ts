@@ -41,7 +41,7 @@ export class ExplorerService {
         config.get(
           'CACHE_STATS_TTL_SECONDS',
         ) ??
-          5,
+        5,
       );
 
     this.listTtl =
@@ -49,7 +49,7 @@ export class ExplorerService {
         config.get(
           'CACHE_LIST_TTL_SECONDS',
         ) ??
-          10,
+        10,
       );
 
     this.detailTtl =
@@ -57,7 +57,7 @@ export class ExplorerService {
         config.get(
           'CACHE_DETAIL_TTL_SECONDS',
         ) ??
-          60,
+        60,
       );
   }
 
@@ -204,6 +204,14 @@ export class ExplorerService {
 
   getNetworkStatus() {
     return this.cache.remember('explorer:network-status', this.statsTtl, () => this.indexer.getNetworkStatus(), decodeNetworkStatus);
+  }
+
+  getActivity(
+    address: string,
+    page: number,
+    limit: number,
+  ) {
+    return this.indexer.getActivity(address, page, limit);
   }
 }
 // Explorer request-теріне Redis caching қосады. Бір data қайта-қайта сұралса Indexer мен PostgreSQL-ға unnecessary query бармайды.

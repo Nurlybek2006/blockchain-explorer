@@ -25,6 +25,9 @@ import {
 } from '../../database/schema/index.js';
 import { resolveIndexedSearch } from './search-resolution.js';
 
+import { sql } from 'drizzle-orm';
+import { decodeWalletActivity } from '@blockchain-explorer/contracts';
+
 @Injectable()
 export class ExplorerQueryService {
     constructor(
@@ -685,6 +688,157 @@ export class ExplorerQueryService {
                     ),
             },
         };
+    }
+
+
+    async getActivity(
+        address: string,
+        page: number,
+        limit: number,
+    ) {
+        const normalized = address.toLowerCase();
+        const offset = (page - 1) * limit;
+
+        const result = await this.database.db.execute(sql`
+    WITH activity AS (
+      SELECT
+        'native:' || t.hash AS id,
+        t.hash AS "transactionHash",
+        t.block_number AS "blockNumber",
+        t.transaction_index AS "transactionIndex",
+        -1 AS "logIndex",
+        b.timestamp AS timestamp,
+        CASE
+          WHEN t.from_address = ${normalized}
+            AND COALESCE(t.to_address, r.contract_address) = ${normalized}
+            THEN 'self'
+          WHEN COALESCE(t.to_address, r.contract_address) = ${normalized}
+            THEN 'received'
+          ELSE 'sent'
+        END AS direction,
+        'native' AS "assetType",
+        NULL::text AS "tokenAddress",
+        'ETH' AS symbol,
+        18 AS decimals,
+        t.value::text AS "amountRaw",
+        t.from_address AS "fromAddress",
+        COALESCE(t.to_address, r.contract_address) AS "toAddress"
+      FROM transactions t
+      INNER JOIN blocks b
+        ON b.number = t.block_number
+        AND b.hash = t.block_hash
+      INNER JOIN receipts r
+        ON r.transaction_hash = t.hash
+        AND r.block_number = t.block_number
+      WHERE
+        r.status = true
+        AND t.value > 0
+        AND COALESCE(t.to_address, r.contract_address) IS NOT NULL
+        AND (
+          t.from_address = ${normalized}
+          OR COALESCE(t.to_address, r.contract_address) = ${normalized}
+        )
+
+      UNION ALL
+
+      SELECT
+        'erc20:' || tr.transaction_hash || ':' || tr.log_index::text AS id,
+        tr.transaction_hash AS "transactionHash",
+        tr.block_number AS "blockNumber",
+        tr.transaction_index AS "transactionIndex",
+        tr.log_index AS "logIndex",
+        b.timestamp AS timestamp,
+        CASE
+          WHEN tr.from_address = ${normalized}
+            AND tr.to_address = ${normalized}
+            THEN 'self'
+          WHEN tr.to_address = ${normalized}
+            THEN 'received'
+          ELSE 'sent'
+        END AS direction,
+        'erc20' AS "assetType",
+        tr.token_address AS "tokenAddress",
+        tk.symbol AS symbol,
+        tk.decimals AS decimals,
+        tr.amount::text AS "amountRaw",
+        tr.from_address AS "fromAddress",
+        tr.to_address AS "toAddress"
+      FROM token_transfers tr
+      INNER JOIN transactions t
+        ON t.hash = tr.transaction_hash
+        AND t.block_number = tr.block_number
+      INNER JOIN blocks b
+        ON b.number = t.block_number
+        AND b.hash = t.block_hash
+      INNER JOIN receipts r
+        ON r.transaction_hash = t.hash
+        AND r.block_number = t.block_number
+      INNER JOIN tokens tk
+        ON tk.address = tr.token_address
+      WHERE
+        r.status = true
+        AND tr.removed = false
+        AND tr.amount > 0
+        AND (
+          tr.from_address = ${normalized}
+          OR tr.to_address = ${normalized}
+        )
+    ),
+    selected AS (
+      SELECT *
+      FROM activity
+      ORDER BY
+        "blockNumber" DESC,
+        "transactionIndex" DESC,
+        "logIndex" DESC,
+        id DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    ),
+    totals AS (
+      SELECT COUNT(*) AS total
+      FROM activity
+    )
+    SELECT jsonb_build_object(
+      'address', ${normalized}::text,
+      'items', COALESCE(
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'id', s.id,
+              'transactionHash', s."transactionHash",
+              'blockNumber', s."blockNumber"::text,
+              'timestamp', s.timestamp,
+              'direction', s.direction,
+              'assetType', s."assetType",
+              'tokenAddress', s."tokenAddress",
+              'symbol', s.symbol,
+              'decimals', s.decimals,
+              'amountRaw', s."amountRaw",
+              'fromAddress', s."fromAddress",
+              'toAddress', s."toAddress"
+            )
+            ORDER BY
+              s."blockNumber" DESC,
+              s."transactionIndex" DESC,
+              s."logIndex" DESC,
+              s.id DESC
+          )
+          FROM selected s
+        ),
+        '[]'::jsonb
+      ),
+      'pagination', jsonb_build_object(
+        'page', ${page}::integer,
+        'limit', ${limit}::integer,
+        'total', totals.total,
+        'totalPages', CEIL(totals.total::numeric / ${limit})::bigint
+      )
+    ) AS payload
+    FROM totals
+  `);
+
+        return decodeWalletActivity(result.rows[0]?.payload);
     }
 
     private paginate<T>(

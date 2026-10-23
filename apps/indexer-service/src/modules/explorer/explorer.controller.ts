@@ -35,7 +35,7 @@ export class ExplorerController {
       ExplorerQueryService,
     private readonly advanced: AdvancedExplorerService,
     private readonly network: NetworkStatusService,
-  ) {}
+  ) { }
 
   @Get('network/status')
   networkStatus() { return this.network.getStatus(); }
@@ -273,6 +273,23 @@ export class ExplorerController {
 
     return jsonSafe(
       result,
+    );
+  }
+
+  @Get('addresses/:address/activity')
+  async activity(
+    @Param('address') address: string,
+    @Query('page') pageRaw?: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    validateAddress(address);
+
+    const { page, limit } = parsePagination(pageRaw, limitRaw);
+
+    return this.explorer.getActivity(
+      address.toLowerCase(),
+      page,
+      limit,
     );
   }
 }
