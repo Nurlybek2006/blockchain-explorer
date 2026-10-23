@@ -4,7 +4,7 @@ Frontend толық `kk` және `en` тілдерін қолдайды. Әде
 
 ## Құрылымы және сөздіктер
 
-`apps/web/src/i18n/locales/en.ts` — English source dictionary. `kk.ts` дәл сол key құрылымын сақтайды. Сөздіктер common/navigation, explorer/realtime, auth/portfolio/watchlists/alerts/settings және errors домендеріне бөлінген. Екі тілде де 623 leaf key бар.
+`apps/web/src/i18n/locales/en.ts` — English source dictionary. `kk.ts` дәл сол key құрылымын сақтайды. Сөздіктер common/navigation, explorer/realtime, auth/portfolio/watchlists/alerts/settings, errors және transaction-based P&L (`pnl`) домендеріне бөлінген. Жаңа feature қосылған сайын толық key/placeholder parity автоматты тестпен тексеріледі.
 
 `types.ts` ішіндегі `DictionaryShape` және `satisfies` қазақша сөздікте жетіспейтін не артық key болса TypeScript қатесін береді. `TranslationKey` тек бар dot-separated key-лерді қабылдайды; English шаблонындағы `{name}` сияқты параметрлер `Translator` аргументтеріне айналады. `translator.ts` missing key, бос мәтін немесе жетіспейтін interpolation параметрі үшін қате шығарады. Үндемей English мәтініне fallback жасалмайды.
 

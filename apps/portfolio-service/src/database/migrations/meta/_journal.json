@@ -22,6 +22,13 @@
       "when": 1791918580520,
       "tag": "0002_lucky_rocket_racer",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792755414274,
+      "tag": "0003_portfolio_cost_basis",
+      "breakpoints": true
     }
   ]
 }

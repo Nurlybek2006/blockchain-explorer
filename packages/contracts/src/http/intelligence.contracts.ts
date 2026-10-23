@@ -67,8 +67,8 @@ export interface PortfolioAnalyticsResponse {
   complete: boolean;
   marketChangeComplete: boolean;
   allocationBasis: 'priced_assets';
-  pnlAvailable: false;
-  pnlReason: 'cost_basis_unavailable';
+  pnlAvailable: boolean;
+  pnlReason: 'cost_basis_unavailable' | 'history_incomplete' | 'price_unavailable' | null;
 }
 
 export interface PaginatedResponse<T> {

@@ -67,10 +67,12 @@ function shortAddress(address: string): string {
 
 export function PortfolioActivity({
   address,
+  onRecord,
 }: {
   address: string;
+  onRecord?: (item: WalletActivityItem) => void;
 }) {
-  const { locale } = useTranslation();
+  const { locale, t } = useTranslation();
   const text = messages[locale];
   const [page, setPage] = useState(1);
   const normalized = address.toLowerCase();
@@ -233,6 +235,7 @@ export function PortfolioActivity({
                         →
                       </span>
                     </Link>
+                    {onRecord && item.direction !== 'self' && /[1-9]/.test(item.amountRaw) && <Button className={styles.recordButton} variant="ghost" disabled={item.decimals === null} title={item.decimals === null ? t('pnl.needDecimals') : t('pnl.classify')} onClick={() => onRecord(item)}>{t('pnl.classify')}</Button>}
                   </li>
                 );
               })}

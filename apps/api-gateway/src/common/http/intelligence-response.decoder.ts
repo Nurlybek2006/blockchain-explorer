@@ -37,11 +37,14 @@ function performance(value: unknown): PortfolioAssetPerformance | null {
 }
 export function decodeAnalytics(value: unknown): PortfolioAnalyticsResponse {
   const b = readRecord(value);
-  if (!Array.isArray(b.allocation) || b.allocationBasis !== 'priced_assets' || b.pnlAvailable !== false || b.pnlReason !== 'cost_basis_unavailable') return invalidResponse();
+  if (!Array.isArray(b.allocation) || b.allocationBasis !== 'priced_assets' || typeof b.pnlAvailable !== 'boolean'
+    || (b.pnlAvailable ? b.pnlReason !== null : !['cost_basis_unavailable', 'history_incomplete', 'price_unavailable'].includes(readString(b.pnlReason)))) return invalidResponse();
+  const pnlReason = b.pnlReason;
+  if (pnlReason !== null && pnlReason !== 'cost_basis_unavailable' && pnlReason !== 'history_incomplete' && pnlReason !== 'price_unavailable') return invalidResponse();
   return {
     totalValueUsd: readDecimal(b.totalValueUsd, true, false), pricedValueUsd: readMoney(b.pricedValueUsd), change24hUsd: readDecimal(b.change24hUsd), change24hPercent: readDecimal(b.change24hPercent), historicalChange24hUsd: readDecimal(b.historicalChange24hUsd), historicalChange24hPercent: readDecimal(b.historicalChange24hPercent),
     bestAsset: performance(b.bestAsset), worstAsset: performance(b.worstAsset), allocation: b.allocation.map((value: unknown) => { const a = readRecord(value); return { assetKey: readString(a.assetKey), symbol: readString(a.symbol), valueUsd: readMoney(a.valueUsd), percentage: readMoney(a.percentage) }; }),
-    pricedAssetCount: readInteger(b.pricedAssetCount), unpricedAssetCount: readInteger(b.unpricedAssetCount), complete: readBoolean(b.complete), marketChangeComplete: readBoolean(b.marketChangeComplete), allocationBasis: 'priced_assets', pnlAvailable: false, pnlReason: 'cost_basis_unavailable',
+    pricedAssetCount: readInteger(b.pricedAssetCount), unpricedAssetCount: readInteger(b.unpricedAssetCount), complete: readBoolean(b.complete), marketChangeComplete: readBoolean(b.marketChangeComplete), allocationBasis: 'priced_assets', pnlAvailable: b.pnlAvailable, pnlReason,
   };
 }
 export function decodeWatchlist(value: unknown): WatchlistResponse { const b = readRecord(value); return { id: readUuid(b.id), name: readString(b.name), createdAt: readTimestamp(b.createdAt) }; }

@@ -21,6 +21,7 @@ import { UpdatePortfolioDto } from './dto/update-portfolio.dto.js';
 import { PortfolioService } from './portfolio.service.js';
 import { IntelligenceClient } from '../intelligence/intelligence.client.js';
 import { PortfolioHistoryQueryDto } from '../intelligence/dto/intelligence.dto.js';
+import { PortfolioTradeDto } from './dto/portfolio-trade.dto.js';
 
 @Controller('portfolio')
 @UseGuards(JwtAuthGuard)
@@ -84,5 +85,32 @@ export class PortfolioController {
   @Get(':id/valuation')
   valuation(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.intelligence.valuation(user.id, id);
+  }
+
+  @Get(':id/pnl')
+  pnl(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.intelligence.pnl(user.id, id);
+  }
+
+  @Get(':id/trades')
+  trades(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string, @Query() query: PaginationQueryDto) {
+    return this.intelligence.trades(user.id, id, query.page, query.limit);
+  }
+
+  @Post(':id/trades')
+  createTrade(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() input: PortfolioTradeDto) {
+    return this.intelligence.saveTrade(user.id, id, input);
+  }
+
+  @Patch(':id/trades/:tradeId')
+  updateTrade(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('tradeId', new ParseUUIDPipe()) tradeId: string, @Body() input: PortfolioTradeDto) {
+    return this.intelligence.saveTrade(user.id, id, input, tradeId);
+  }
+
+  @Delete(':id/trades/:tradeId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteTrade(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string, @Param('tradeId', new ParseUUIDPipe()) tradeId: string) {
+    return this.intelligence.deleteTrade(user.id, id, tradeId);
   }
 }

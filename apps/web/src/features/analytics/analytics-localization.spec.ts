@@ -41,7 +41,7 @@ describe('analytics and history localization', () => {
   it('localizes pricing coverage and allocation accessibility without claiming investment returns', () => {
     const before = JSON.stringify(data);
     const html = render('kk', createElement(PortfolioAnalytics, { data, error: null, retry: () => undefined }));
-    for (const label of ['24 сағаттағы нарықтық құн өзгерісі', 'Ең көп өскен актив', 'Ең көп төмендеген актив', 'Активтердің үлесі', 'Бағасы белгілі: 1 / белгісіз: 1', 'Бағалау толық емес', 'инвестициялық пайда мен шығын (P&amp;L) есептелмейді']) expect(html).toContain(label);
+    for (const label of ['24 сағаттағы нарықтық құн өзгерісі', 'Ең көп өскен актив', 'Ең көп төмендеген актив', 'Активтердің үлесі', 'Бағасы белгілі: 1 / белгісіз: 1', 'Бағалау толық емес', 'Инвестиция кірістілігі мәмілелер журналы негізінде']) expect(html).toContain(label);
     expect(html).toContain(`ETH: бағасы белгілі активтердің ${formatDecimal(data.allocation[0].percentage, 'kk')}%-ы`);
     expect(html).not.toContain('Best performing asset');
     expect(JSON.stringify(data)).toBe(before);

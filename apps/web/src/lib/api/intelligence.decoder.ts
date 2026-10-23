@@ -82,11 +82,14 @@ function performance(value: unknown): PortfolioAssetPerformance | null {
 }
 export function decodeAnalytics(value: unknown): PortfolioAnalyticsResponse {
   const data = object(value);
-  if (data.allocationBasis !== 'priced_assets' || data.pnlAvailable !== false || data.pnlReason !== 'cost_basis_unavailable') return invalid();
+  if (data.allocationBasis !== 'priced_assets' || typeof data.pnlAvailable !== 'boolean'
+    || (data.pnlAvailable ? data.pnlReason !== null : !['cost_basis_unavailable', 'history_incomplete', 'price_unavailable'].includes(string(data.pnlReason)))) return invalid();
+  const pnlReason = data.pnlReason;
+  if (pnlReason !== null && pnlReason !== 'cost_basis_unavailable' && pnlReason !== 'history_incomplete' && pnlReason !== 'price_unavailable') return invalid();
   return {
     totalValueUsd: nullableDecimal(data.totalValueUsd), pricedValueUsd: decimal(data.pricedValueUsd), change24hUsd: nullableDecimal(data.change24hUsd), change24hPercent: nullableDecimal(data.change24hPercent), historicalChange24hUsd: nullableDecimal(data.historicalChange24hUsd), historicalChange24hPercent: nullableDecimal(data.historicalChange24hPercent), bestAsset: performance(data.bestAsset), worstAsset: performance(data.worstAsset),
     allocation: array(data.allocation, (item) => { const row = object(item); return { assetKey: string(row.assetKey), symbol: string(row.symbol), valueUsd: decimal(row.valueUsd), percentage: decimal(row.percentage) }; }),
-    pricedAssetCount: integer(data.pricedAssetCount), unpricedAssetCount: integer(data.unpricedAssetCount), complete: boolean(data.complete), marketChangeComplete: boolean(data.marketChangeComplete), allocationBasis: 'priced_assets', pnlAvailable: false, pnlReason: 'cost_basis_unavailable',
+    pricedAssetCount: integer(data.pricedAssetCount), unpricedAssetCount: integer(data.unpricedAssetCount), complete: boolean(data.complete), marketChangeComplete: boolean(data.marketChangeComplete), allocationBasis: 'priced_assets', pnlAvailable: data.pnlAvailable, pnlReason,
   };
 }
 export function decodePrice(value: unknown): AssetPriceResponse {

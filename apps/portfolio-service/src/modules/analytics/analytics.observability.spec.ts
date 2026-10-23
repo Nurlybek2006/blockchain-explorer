@@ -5,7 +5,7 @@ import * as telemetry from '@blockchain-explorer/observability';
 import { AnalyticsService } from './analytics.service.js';
 import type { AnalyticsRepository } from './analytics.repository.js';
 import type { PricesService } from '../prices/prices.service.js';
-import { holding, price, state, testOwner, testPortfolioId } from './analytics.fixtures.js';
+import { holding, price, state, testOwner, testPortfolioId, unavailablePnl } from './analytics.fixtures.js';
 
 vi.mock('@blockchain-explorer/observability', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@blockchain-explorer/observability')>();
@@ -30,7 +30,7 @@ describe('portfolio business metric correctness', () => {
       getPrices: vi.fn<PricesService['getPrices']>().mockResolvedValue([price('native:eth', '1200')]),
       getPrice: vi.fn<PricesService['getPrice']>().mockResolvedValue(price('native:eth', '1200')),
     };
-    service = new AnalyticsService(repository, prices, new ConfigService());
+    service = new AnalyticsService(repository, prices, new ConfigService(), { summary: async () => unavailablePnl() });
   });
   afterEach(() => { vi.restoreAllMocks(); });
 

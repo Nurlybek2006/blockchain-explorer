@@ -8,3 +8,4 @@ export type * from './http/intelligence.contracts.js';
 export * from './utils/ethereum-address.js';
 export * from './utils/asset-key.js';
 export * from './http/activity.contracts.js';
+export * from './http/pnl.contracts.js';

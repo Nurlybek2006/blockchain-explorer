@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
+import { decodePortfolioPnl, decodePortfolioTrade, decodePortfolioTrades, type PortfolioPnlResponse, type PortfolioTradeInput, type PortfolioTradeListResponse, type PortfolioTradeResponse } from '@blockchain-explorer/contracts';
 import { ConfigService } from '@nestjs/config';
 import type {
   AlertCreateInput, AlertEventListResponse, AlertEventResponse, AlertListResponse, AlertResponse, AlertUpdateInput,
@@ -30,6 +31,26 @@ export class IntelligenceClient extends PortfolioHttpClient {
   }
   async analytics(userId: string, id: string): Promise<PortfolioAnalyticsResponse> {
     return decodeAnalytics(await this.request('GET', `/internal/portfolios/${encodeURIComponent(id)}/analytics`, { userId }));
+  }
+  async pnl(userId: string, id: string): Promise<PortfolioPnlResponse> {
+    return this.decodePnl(decodePortfolioPnl, await this.request('GET', `/internal/portfolios/${encodeURIComponent(id)}/pnl`, { userId }));
+  }
+  async trades(userId: string, id: string, page: number, limit: number): Promise<PortfolioTradeListResponse> {
+    return this.decodePnl(decodePortfolioTrades, await this.request('GET', `/internal/portfolios/${encodeURIComponent(id)}/trades`, { userId, page, limit }));
+  }
+  async saveTrade(userId: string, id: string, input: PortfolioTradeInput, tradeId?: string): Promise<PortfolioTradeResponse> {
+    // Explicit projection prevents caller properties from overriding authenticated identity.
+    const body: PortfolioTradeInput = { clientId: input.clientId, assetKey: input.assetKey, symbol: input.symbol, decimals: input.decimals,
+      side: input.side, quantityRaw: input.quantityRaw, unitPriceUsd: input.unitPriceUsd, feeUsd: input.feeUsd,
+      occurredAt: input.occurredAt, transactionHash: input.transactionHash, activityId: input.activityId };
+    const path = `/internal/portfolios/${encodeURIComponent(id)}/trades${tradeId ? `/${encodeURIComponent(tradeId)}` : ''}`;
+    return this.decodePnl(decodePortfolioTrade, await this.request(tradeId ? 'PATCH' : 'POST', path, { userId }, body));
+  }
+  async deleteTrade(userId: string, id: string, tradeId: string): Promise<void> {
+    await this.request('DELETE', `/internal/portfolios/${encodeURIComponent(id)}/trades/${encodeURIComponent(tradeId)}`, { userId });
+  }
+  private decodePnl<T>(decode: (value: unknown) => T, value: unknown): T {
+    try { return decode(value); } catch { throw new BadGatewayException('Portfolio service returned an invalid P&L response'); }
   }
   async createWatchlist(userId: string, input: WatchlistCreateInput): Promise<WatchlistResponse> {
     return decodeWatchlist(await this.request('POST', '/internal/watchlists', undefined, { userId, name: input.name }));

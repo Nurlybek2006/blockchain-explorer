@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants.js';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
@@ -31,6 +31,22 @@ class RecordingClient extends IntelligenceClient {
 }
 
 describe('Intelligence Gateway owner propagation', () => {
+  it('projects trade fields explicitly and sends authenticated ownership in the private query', async () => {
+    const client = new RecordingClient();
+    const input = { clientId: other, assetKey: 'native:eth', symbol: 'ETH', decimals: 18, side: 'buy' as const,
+      quantityRaw: '2500000000000000000', unitPriceUsd: '2500.123456789012345678', feeUsd: '0', occurredAt: date, transactionHash: null, activityId: null };
+    client.reply = { ...input, id: resourceId, sequence: '1' };
+    const result = await client.saveTrade(owner, resourceId, Object.assign({ ...input }, { userId: other, private: 'ignored' }));
+    expect(result.unitPriceUsd).toBe(input.unitPriceUsd);
+    expect(client.calls[0]).toEqual({ method: 'POST', path: `/internal/portfolios/${resourceId}/trades`, query: { userId: owner }, body: input });
+    await client.deleteTrade(owner, resourceId, other);
+    expect(client.calls[1]).toMatchObject({ method: 'DELETE', path: `/internal/portfolios/${resourceId}/trades/${other}`, query: { userId: owner } });
+  });
+  it('rejects malformed upstream P&L, journal and trade responses at the Gateway boundary', async () => {
+    const client = new RecordingClient(); client.reply = { method: 'fifo', summary: { totalPnlUsd: 'NaN' } };
+    await expect(client.pnl(owner, resourceId)).rejects.toBeInstanceOf(BadGatewayException);
+    await expect(client.trades(owner, resourceId, 1, 20)).rejects.toBeInstanceOf(BadGatewayException);
+  });
   it('uses the authenticated owner for create bodies and strips unrecognized input properties', async () => {
     const client = new RecordingClient();
     const controller = new WatchlistsController(client);

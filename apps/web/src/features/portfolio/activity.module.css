@@ -5,6 +5,10 @@
   line-height: 1.6;
 }
 
+.recordButton {
+  margin: 0 0.5rem 0.85rem;
+}
+
 .list {
   margin: 0;
   padding: 0;

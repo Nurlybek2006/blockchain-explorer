@@ -9,6 +9,7 @@ import { PricesService } from '../prices/prices.service.js';
 import { AnalyticsRepository } from './analytics.repository.js';
 import type { PortfolioState } from './analytics.repository.js';
 import { buildAnalytics, buildValuation } from './valuation.math.js';
+import { PnlService } from './pnl.service.js';
 
 const historyMilliseconds: Record<PortfolioHistoryRange, number> = {
   '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000, '90d': 90 * 86_400_000,
@@ -28,6 +29,7 @@ export class AnalyticsService {
     private readonly repository: AnalyticsRepository,
     @Inject(PricesService) private readonly prices: Pick<PricesService, 'getPrices' | 'getPrice'>,
     config: ConfigService,
+    @Inject(PnlService) private readonly pnl: Pick<PnlService, 'summary'>,
   ) {
     this.snapshotIntervalMs = Number(config.get<string | number>('PORTFOLIO_SNAPSHOT_INTERVAL_MS') ?? 300_000);
     if (!Number.isSafeInteger(this.snapshotIntervalMs) || this.snapshotIntervalMs < 60_000 || this.snapshotIntervalMs > 86_400_000) {
@@ -55,7 +57,10 @@ export class AnalyticsService {
     // An older arbitrary snapshot must not masquerade as a 24h comparison.
     const baseline = await this.repository.ownedHistoricalBaseline(userId, portfolioId,
       new Date(cutoff.getTime() - this.snapshotIntervalMs), cutoff);
-    return buildAnalytics(valuation, baseline?.totalValueUsd ?? null);
+    const pnl = await this.pnl.summary(userId, portfolioId);
+    return { ...buildAnalytics(valuation, baseline?.totalValueUsd ?? null), pnlAvailable: pnl.summary.complete,
+      pnlReason: pnl.summary.complete ? null : pnl.entryCount === 0 ? 'cost_basis_unavailable'
+        : pnl.assets.some(asset => asset.reasons.some(reason => reason === 'history_missing' || reason === 'balance_mismatch' || reason === 'balance_unobserved')) ? 'history_incomplete' : 'price_unavailable' };
   }
 
   async snapshotPortfolio(portfolioId: string): Promise<void> {

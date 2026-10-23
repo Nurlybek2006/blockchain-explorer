@@ -14,6 +14,7 @@ export default defineConfig({
       reporter: ['text-summary', 'json-summary', 'html'],
       thresholds: {
         'src/modules/analytics/{valuation.math,analytics.service}.ts': { statements: 90, branches: 85, functions: 90, lines: 90 },
+        'src/modules/analytics/{pnl.math,pnl.service}.ts': { statements: 90, branches: 85, functions: 90, lines: 90 },
         'src/modules/portfolios/portfolios.service.ts': { statements: 75, branches: 70, functions: 90, lines: 80 },
         'src/modules/alerts/alerts.service.ts': { statements: 80, branches: 75, functions: 90, lines: 85 },
       },

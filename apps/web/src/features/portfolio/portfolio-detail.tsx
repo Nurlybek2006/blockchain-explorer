@@ -35,6 +35,8 @@ import { changeClass, valuationDisplay } from "./portfolio-display";
 import styles from "./portfolio.module.css";
 import { useTranslation } from "@/hooks/use-translation";
 import { PortfolioActivity } from "./portfolio-activity";
+import { PortfolioPnl } from "./portfolio-pnl";
+import type { WalletActivityItem } from "@blockchain-explorer/contracts/browser";
 
 export function PortfolioDetail({ id }: { id: string }) {
   const { t, locale } = useTranslation();
@@ -54,6 +56,7 @@ export function PortfolioDetail({ id }: { id: string }) {
   );
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [tradeActivity, setTradeActivity] = useState<WalletActivityItem | null>(null);
   const router = useRouter();
   const { notify } = useToast();
   if (resource.error)
@@ -251,7 +254,9 @@ export function PortfolioDetail({ id }: { id: string }) {
       <PortfolioActivity
         key={`${id}:${portfolio.walletAddress}`}
         address={portfolio.walletAddress}
+        onRecord={setTradeActivity}
       />
+      <PortfolioPnl key={id} id={id} holdings={holdings} activity={tradeActivity} onActivityHandled={() => setTradeActivity(null)} onSaved={allocations.reload} />
       <PortfolioHistory key={id} id={id} />
       <PortfolioAnalytics
         data={allocations.data}

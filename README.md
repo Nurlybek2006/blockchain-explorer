@@ -13,6 +13,7 @@ The production Compose configuration provides a local, production-style deployme
 - Native WebSocket updates with reconnect, deduplication and REST recovery.
 - Registration, access JWT, rotating refresh sessions and owner-scoped portfolio/watchlist/alert management.
 - Exact decimal valuation, incomplete/stale price states, sampled snapshot history and price/transfer alerts.
+- Transaction-based moving average cost basis, realized/unrealized P&L and ROI, with a private trade journal and wallet balance reconciliation. See [True P&L](docs/true-pnl.md) for entry types, fee handling and history coverage.
 - Transactional outbox, RabbitMQ delivery, Redis cache and BullMQ workers.
 - Distributed traces, structured logs, metrics, provisioned Grafana dashboards and Prometheus alert rules.
 - Complete Kazakh/English interface with Kazakh as the default, a persistent header language switcher and exact locale-aware financial formatting. See [localization architecture and verification](docs/localization-kz-en.md); run `pnpm verify:i18n`.
@@ -58,7 +59,7 @@ The scanner processes a configured chain and confirmed head. Blocks and dependen
 
 ## Portfolio Intelligence
 
-Native ETH and known ERC-20 holdings sync asynchronously. CoinGecko prices produce exact string valuations, freshness metadata and an honest unknown total when nonzero assets cannot be priced. Allocation uses priced assets. Market price change and snapshot value change are separate; investment P&L is unavailable without cost basis. Snapshots require complete, fresh observations. Whale alerts currently cover indexed ERC-20 transfers using current reference prices.
+Native ETH and known ERC-20 holdings sync asynchronously. CoinGecko prices produce exact string valuations, freshness metadata and an honest unknown total when nonzero assets cannot be priced. Allocation uses priced assets. Market price change and snapshot value change are separate from transaction-based investment P&L. The private journal tracks weighted average cost, sales, transfers and crypto fees; complete P&L requires acquisition costs, reconciled wallet balances and fresh prices. Snapshots require complete, fresh observations. Whale alerts currently cover indexed ERC-20 transfers using current reference prices.
 
 ## Messaging Architecture
 

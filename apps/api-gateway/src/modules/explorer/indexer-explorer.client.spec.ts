@@ -13,7 +13,9 @@ describe('Indexer advanced Explorer HTTP boundary', () => {
     fetchMock.mockResolvedValue(Response.json({ ...data, internalServiceToken: 'private' }));
     expect(await client().search(hash)).toEqual(data);
     const call = fetchMock.mock.calls[0];
-    expect(String(call?.[0])).toBe(`http://indexer:3001/internal/explorer/search?q=${hash}`);
+    expect(call?.[0]).toEqual(
+      new URL(`http://indexer:3001/internal/explorer/search?q=${hash}`),
+    );
     expect(call?.[1]).toMatchObject({ redirect: 'error', headers: { 'x-internal-service-token': 'test-internal-secret' } });
   });
   it('rejects successful upstream responses with unsafe search destinations', async () => {

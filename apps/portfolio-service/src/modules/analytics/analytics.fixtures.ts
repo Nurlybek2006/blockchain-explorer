@@ -1,5 +1,11 @@
 import type { AssetPriceResponse } from '@blockchain-explorer/contracts';
 import type { AnalyticsHolding, PortfolioState } from './analytics.repository.js';
+import type { PortfolioPnlResponse } from '@blockchain-explorer/contracts';
+
+export function unavailablePnl(): PortfolioPnlResponse {
+  return { method: 'moving_average', asOf: testDate.toISOString(), entryCount: 0, assets: [],
+    summary: { investedUsd: null, capitalBasisUsd: null, currentValueUsd: null, realizedPnlUsd: null, unrealizedPnlUsd: null, totalPnlUsd: null, roiPercent: null, complete: false } };
+}
 
 export const testOwner = 'c9f0049a-3a4b-4e88-9f43-4c97b07ed634';
 export const testPortfolioId = '3873f1cb-5630-4ce9-aa12-23cbdc623510';

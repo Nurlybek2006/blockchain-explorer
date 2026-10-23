@@ -2,8 +2,8 @@ import { ApiError } from '../lib/api/api-error';
 import { createTranslator } from './translator';
 import type { Locale, TranslationKey } from './types';
 
-export type ApiErrorContext = 'login' | 'register' | 'watchlist-item';
-type ErrorTranslationKey = Extract<TranslationKey, `errors.${string}` | 'watchlists.duplicate'>;
+export type ApiErrorContext = 'login' | 'register' | 'watchlist-item' | 'trade';
+type ErrorTranslationKey = Extract<TranslationKey, `errors.${string}` | 'watchlists.duplicate' | 'pnl.validation.history' | 'pnl.validation.duplicate'>;
 export function getApiErrorKey(error: unknown, context?: ApiErrorContext): ErrorTranslationKey {
   if (!(error instanceof ApiError)) return 'errors.unknown';
   if (error.code === 'account_changed') return 'errors.accountChanged';
@@ -13,6 +13,8 @@ export function getApiErrorKey(error: unknown, context?: ApiErrorContext): Error
   if (context === 'login' && error.status === 401) return 'errors.invalidCredentials';
   if (context === 'register' && error.status === 409) return 'errors.emailExists';
   if (context === 'watchlist-item' && error.status === 409) return 'watchlists.duplicate';
+  if (context === 'trade' && error.status === 400) return 'pnl.validation.history';
+  if (context === 'trade' && error.status === 409) return 'pnl.validation.duplicate';
   const keys: Readonly<Record<number, ErrorTranslationKey>> = {
     400: 'errors.invalidInput', 401: 'errors.sessionExpired', 403: 'errors.accessDenied',
     404: 'errors.notFound', 409: 'errors.conflict', 413: 'errors.bodyTooLarge',

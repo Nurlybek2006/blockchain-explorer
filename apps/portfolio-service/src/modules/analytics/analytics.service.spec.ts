@@ -8,7 +8,9 @@ import type { PricesService } from '../prices/prices.service.js';
 import type { AnalyticsRepository } from './analytics.repository.js';
 import { AnalyticsService } from './analytics.service.js';
 import { PortfolioHistoryQueryDto } from './dto/analytics-query.dto.js';
-import { holding, price, state, testDate, testOwner, testPortfolioId } from './analytics.fixtures.js';
+import { buildPnl } from './pnl.math.js';
+import { buildValuation } from './valuation.math.js';
+import { holding, price, state, testDate, testOwner, testPortfolioId, unavailablePnl } from './analytics.fixtures.js';
 
 describe('AnalyticsService ownership, history and snapshots', () => {
   let repository: AnalyticsRepository;
@@ -30,9 +32,19 @@ describe('AnalyticsService ownership, history and snapshots', () => {
       getPrices: vi.fn<PricesService['getPrices']>().mockResolvedValue([price('native:eth', '1234.56789')]),
       getPrice: vi.fn<PricesService['getPrice']>().mockResolvedValue(price('native:eth', '1234.56789')),
     };
-    service = new AnalyticsService(repository, prices, new ConfigService());
+    service = new AnalyticsService(repository, prices, new ConfigService(), { summary: async () => unavailablePnl() });
   });
   afterEach(() => { vi.useRealTimers(); });
+
+  it('advertises actual P&L availability and distinguishes incomplete history from unavailable current prices', async () => {
+    const entry = { clientId: testPortfolioId, assetKey: 'native:eth', symbol: 'ETH', decimals: 18, side: 'buy' as const,
+      quantityRaw: '1000000000000000000', unitPriceUsd: '1000', feeUsd: '0', occurredAt: testDate.toISOString(), transactionHash: null, activityId: null, sequence: 1n };
+    for (const [balance, quote, reason] of [['1000000000000000000', '2000', null], ['2000000000000000000', '2000', 'history_incomplete'], ['1000000000000000000', null, 'price_unavailable']] as const) {
+      const pnl = buildPnl(buildValuation(state([holding('native:eth', balance)]), new Map([['native:eth', price('native:eth', quote)]])), [entry]);
+      const subject = new AnalyticsService(repository, prices, new ConfigService(), { summary: async () => pnl });
+      expect(await subject.analytics(testOwner, testPortfolioId)).toMatchObject({ pnlAvailable: reason === null, pnlReason: reason });
+    }
+  });
 
   it('rejects foreign or archived IDs before pricing or snapshot history reads', async () => {
     vi.mocked(repository.ownedState).mockResolvedValue(null);
