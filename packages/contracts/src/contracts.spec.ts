@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { createEventEnvelope, EVENT_TYPES, isAssetKey, isChainReorganizedEvent, isEthereumAddress, isEventEnvelope,
-  isTokenTransferIndexedEvent, normalizeAssetKey, normalizeEthereumAddress } from './index.js';
+import {
+  createEventEnvelope, EVENT_TYPES, isAssetKey, isChainReorganizedEvent, isEthereumAddress, isEventEnvelope,
+  isTokenTransferIndexedEvent, normalizeAssetKey, normalizeEthereumAddress
+} from './index.js';
 
 const address = `0x${'a'.repeat(40)}`;
 const hash = `0x${'1'.repeat(64)}`;
-const payload = { chainId: 11155111, networkName: 'ethereum-sepolia', blockNumber: '9007199254740993',
+const payload = {
+  chainId: 11155111, networkName: 'ethereum-sepolia', blockNumber: '9007199254740993',
   transactionHash: hash, transactionIndex: 0, logIndex: 0, tokenAddress: address,
-  fromAddress: address, toAddress: address, amountRaw: '900719925474099300000000000', tokenDecimals: 18, tokenSymbol: 'TC' };
+  fromAddress: address, toAddress: address, amountRaw: '900719925474099300000000000', tokenDecimals: 18, tokenSymbol: 'TC'
+};
 
 describe('shared public and versioned event contracts', () => {
   it('creates UUID v1 envelopes with parseable UTC time and preserves exact decimal strings', () => {
