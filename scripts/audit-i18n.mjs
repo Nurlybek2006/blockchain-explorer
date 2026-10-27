@@ -49,6 +49,7 @@ const attributes = new Set([
 ]);
 const findings = [];
 
+
 async function files(path) {
   const result = [];
   for (const entry of await readdir(path, { withFileTypes: true })) {
