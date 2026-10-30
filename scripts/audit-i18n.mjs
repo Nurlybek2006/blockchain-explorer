@@ -47,6 +47,7 @@ const attributes = new Set([
   "eyebrow",
   "note",
 ]);
+
 const findings = [];
 
 async function files(path) {
