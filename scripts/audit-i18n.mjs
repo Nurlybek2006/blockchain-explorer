@@ -63,6 +63,7 @@ async function files(path) {
   }
   return result;
 }
+
 function untranslated(text) {
   const normalized = text.trim().replace(/\s+/g, " ");
   if (!/[A-Za-z]{2,}/.test(normalized) || permitted.has(normalized))
