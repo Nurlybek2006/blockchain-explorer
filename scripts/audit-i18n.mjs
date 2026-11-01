@@ -72,6 +72,7 @@ function untranslated(text) {
     return false;
   return true;
 }
+
 for (const file of await files(directory)) {
   const source = ts.createSourceFile(
     file,
